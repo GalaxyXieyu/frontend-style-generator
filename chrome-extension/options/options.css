@@ -935,7 +935,7 @@ body {
   padding: 60px 20px;
 }
 
-.empty-state svg {
+.empty-state > svg {
   margin: 0 auto 20px;
   opacity: 0.3;
   color: var(--text-secondary);
@@ -945,6 +945,15 @@ body {
   font-size: 16px;
   color: var(--text-secondary);
   margin-bottom: 20px;
+}
+
+.empty-state button {
+  margin-top: 24px;
+}
+
+.empty-state button svg {
+  opacity: 1;
+  margin: 0;
 }
 
 /* 模态框 */
@@ -1454,5 +1463,31 @@ body {
   
   .prompt-edit-area {
     min-height: 300px;
+  }
+}
+
+/* ==================== 数据管理按钮网格 ==================== */
+.data-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.data-actions-grid .btn-secondary,
+.data-actions-grid .btn-danger {
+  width: 100%;
+  justify-content: center;
+}
+
+/* 响应式：平板和手机 */
+@media (max-width: 1024px) {
+  .data-actions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .data-actions-grid {
+    grid-template-columns: 1fr;
   }
 }

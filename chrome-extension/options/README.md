@@ -202,3 +202,22 @@ chrome.storage.local.get(null, (data) => console.log(data));
 - [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference/)
 - [ES6 Modules](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules)
 - [IndexedDB API](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)
+
+## 🎨 UI 优化日志
+
+### v3.0.1 - 2024-11-24
+**优化历史与数据页面布局**
+
+**改进内容：**
+1. 合并"数据备份与恢复"和"数据管理"为单个卡片
+2. 使用网格布局 (Grid) 让按钮自动排列
+3. 响应式设计：
+   - 桌面端：4列网格自适应
+   - 平板端：2列网格
+   - 手机端：单列布局
+4. 改进视觉层次，减少卡片数量，界面更简洁
+
+**技术实现：**
+- 使用 `grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))` 实现响应式网格
+- 媒体查询适配不同屏幕尺寸
+- 保持按钮样式一致性，视觉更统一

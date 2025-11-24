@@ -1,0 +1,30 @@
+<!-- AI 模型管理页面 -->
+<div class="page active" id="modelsPage">
+  <div class="page-header">
+    <div>
+      <h2>AI 模型管理</h2>
+      <p class="page-description">管理多个 AI 模型配置，支持不同场景使用不同模型</p>
+    </div>
+  </div>
+  
+  <!-- 模型列表 -->
+  <div class="models-grid" id="modelsList">
+    <!-- 动态生成模型卡片 -->
+  </div>
+  
+  <!-- 空状态 -->
+  <div class="empty-state" id="modelsEmpty" style="display: none;">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M12 1V3M12 21V23M4.22 4.22L5.64 5.64M18.36 18.36L19.78 19.78M1 12H3M21 12H23M4.22 19.78L5.64 18.36M18.36 5.64L19.78 4.22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <p>还没有配置任何 AI 模型</p>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px; margin-bottom: 24px;">点击下方按钮开始配置第一个 AI 模型</p>
+    <button id="addModelBtn" class="btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span>添加模型</span>
+    </button>
+  </div>
+</div>
