@@ -88,6 +88,18 @@ class OptionsApp {
       this.exportData();
     });
 
+    document.getElementById('importDataBtn')?.addEventListener('click', () => {
+      document.getElementById('importFileInput')?.click();
+    });
+
+    document.getElementById('importFileInput')?.addEventListener('change', (e) => {
+      this.importData(e.target.files[0]);
+    });
+
+    document.getElementById('viewBackupsBtn')?.addEventListener('click', () => {
+      this.viewBackups();
+    });
+
     document.getElementById('clearDataBtn')?.addEventListener('click', () => {
       this.clearData();
     });
@@ -621,24 +633,68 @@ class OptionsApp {
    * 导出数据
    */
   async exportData() {
-    const config = await this.storage.getConfig(null);
-    const data = {
-      version: '3.0',
-      exportedAt: new Date().toISOString(),
-      snapshots: this.history,
-      config
-    };
+    try {
+      const data = await this.storage.exportAllData();
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      const filename = `design-learn-backup-${new Date().toISOString().split('T')[0]}-${Date.now()}.json`;
+      a.download = filename;
+      a.click();
+      
+      URL.revokeObjectURL(url);
+      Notification.success('数据导出成功！建议妥善保管备份文件');
+    } catch (error) {
+      Notification.error('导出失败：' + error.message);
+    }
+  }
+
+  /**
+   * 导入数据
+   */
+  async importData(file) {
+    if (!file) return;
     
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `style-generator-export-${Date.now()}.json`;
-    a.click();
-    
-    URL.revokeObjectURL(url);
-    Notification.success('数据导出成功');
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      if (!confirm(`⚠️ 确定要导入备份数据吗？\n\n备份时间：${data.exportDate}\n包含 ${data.metadata.snapshotCount} 个快照\n\n当前数据会被先备份，然后替换为导入的数据。`)) {
+        return;
+      }
+      
+      await this.storage.importData(data);
+      Notification.success('数据导入成功');
+      setTimeout(() => location.reload(), 1500);
+    } catch (error) {
+      Notification.error('导入失败：' + error.message);
+      console.error('Import error:', error);
+    }
+  }
+
+  /**
+   * 查看备份列表
+   */
+  async viewBackups() {
+    try {
+      const backups = await this.storage.listBackups();
+      
+      if (backups.length === 0) {
+        Notification.info('暂无自动备份');
+        return;
+      }
+      
+      const message = `找到 ${backups.length} 个自动备份：\n\n` +
+        backups.map((b, i) => `${i + 1}. ${new Date(b.date).toLocaleString('zh-CN')}`).join('\n') +
+        `\n\n💡 提示：这些是系统自动创建的备份，会在保存配置前自动备份。\n建议定期使用"导出备份文件"手动备份重要数据。`;
+      
+      alert(message);
+    } catch (error) {
+      Notification.error('查看备份失败：' + error.message);
+    }
   }
 
   /**
