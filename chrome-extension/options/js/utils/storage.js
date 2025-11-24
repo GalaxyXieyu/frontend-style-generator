@@ -383,4 +383,22 @@ export class StorageManager {
     const json = JSON.stringify(config);
     return new Blob([json]).size;
   }
+
+  /**
+   * 清除所有数据（包括配置和快照）
+   */
+  async clearAllData() {
+    try {
+      // 清除 Chrome Storage
+      await this.clearConfig();
+      
+      // 清除 IndexedDB 快照
+      await this.clearSnapshots();
+      
+      return true;
+    } catch (error) {
+      console.error('Clear all data failed:', error);
+      throw error;
+    }
+  }
 }

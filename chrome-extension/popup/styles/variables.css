@@ -1,0 +1,66 @@
+/* 全局变量和基础样式 */
+
+/* 全局样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  /* 流体蓝色系 - 匹配 Icon */
+  --primary-gradient: linear-gradient(135deg, #5b8cc7 0%, #4a7ab8 100%);
+  --blue-gradient: linear-gradient(135deg, #6b9dd6 0%, #82b8e8 100%);
+  --light-blue: #f0f6fc;
+  --accent-color: #6b9dd6;
+  --text-primary: #2c3e50;
+  --text-secondary: #6c7a8a;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafe;
+  --border-color: #e3eaf4;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  line-height: 1.5;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
+}
+
+.container {
+  width: 380px;
+  min-height: 500px;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}

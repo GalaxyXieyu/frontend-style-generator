@@ -7,7 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="popup.css">
+  
+  <!-- 拆分后的 CSS 文件 -->
+  <link rel="stylesheet" href="styles/variables.css">
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/modal.css">
 </head>
 <body>
   <div class="container">
@@ -181,11 +185,34 @@
       </div>
       
       <div class="modal-footer">
-        <button id="clearCompletedBtn" class="secondary-btn">清除已完成</button>
+        <button id="selectAllBtn" class="secondary-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+            <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>全选</span>
+        </button>
+        <button id="pauseQueueBtn" class="secondary-btn" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="6" y="4" width="4" height="16" stroke="currentColor" stroke-width="2"/>
+            <rect x="14" y="4" width="4" height="16" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>暂停</span>
+        </button>
+        <button id="resumeQueueBtn" class="secondary-btn" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <polygon points="8,5 19,12 8,19" stroke="currentColor" stroke-width="2" fill="currentColor"/>
+          </svg>
+          <span>继续</span>
+        </button>
+        <button id="clearCompletedBtn" class="secondary-btn">清除完成</button>
       </div>
     </div>
   </div>
   
-  <script src="popup.js"></script>
+  <!-- 拆分后的 JS 文件 -->
+  <script src="js/TaskManager.js"></script>
+  <script src="js/QueueController.js"></script>
+  <script src="js/PopupController.js"></script>
 </body>
 </html>

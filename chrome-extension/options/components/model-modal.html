@@ -1,0 +1,78 @@
+<!-- 添加/编辑模型弹窗 -->
+<div class="modal" id="modelModal" style="display: none;">
+  <div class="modal-overlay" id="modalOverlay"></div>
+  <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-header">
+      <h3 id="modalTitle">添加 AI 模型</h3>
+      <button class="close-btn" id="closeModalBtn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    
+    <div class="modal-body">
+      <input type="hidden" id="editModelId">
+      
+      <div class="form-group">
+        <label>模型名称 <span style="color: #ef4444;">*</span></label>
+        <input type="text" id="modalModelName" class="input" placeholder="例如：GPT-4 Turbo">
+        <small>给这个模型配置起一个易识别的名称</small>
+      </div>
+      
+      <div class="form-group">
+        <label>API Key <span style="color: #ef4444;">*</span></label>
+        <div class="input-group">
+          <input type="password" id="modalApiKey" class="input" placeholder="sk-...">
+          <button id="modalToggleKeyBtn" class="icon-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
+              <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+            </svg>
+          </button>
+        </div>
+        <small>您的 API Key 仅保存在本地，不会上传到任何服务器</small>
+      </div>
+      
+      <div class="form-group">
+        <label>Base URL <span style="color: #ef4444;">*</span></label>
+        <input type="text" id="modalBaseUrl" class="input" placeholder="https://api.openai.com/v1">
+        <small>API 的基础 URL，使用代理时可修改</small>
+      </div>
+      
+      <div class="form-group">
+        <label>模型 ID <span style="color: #ef4444;">*</span></label>
+        <input type="text" id="modalModelId" class="input" placeholder="gpt-4-turbo-preview">
+        <small>API 调用时使用的模型标识符</small>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label>Temperature</label>
+          <input type="range" id="modalTemperature" class="slider" min="0" max="1" step="0.1" value="0.7">
+          <div class="slider-value">
+            <span>保守</span>
+            <span id="modalTemperatureValue" class="value">0.7</span>
+            <span>创新</span>
+          </div>
+          <small>控制生成内容的创造性</small>
+        </div>
+        
+        <div class="form-group" style="flex: 1;">
+          <label>Max Tokens</label>
+          <input type="number" id="modalMaxTokens" class="input" value="4000" min="1000" max="16000">
+          <small>控制生成内容的长度</small>
+        </div>
+      </div>
+    </div>
+    
+    <div class="modal-footer">
+      <button class="btn-secondary" id="cancelModalBtn">
+        取消
+      </button>
+      <button id="saveModelBtn" class="btn-primary">
+        <span id="saveModelBtnText">保存</span>
+      </button>
+    </div>
+  </div>
+</div>

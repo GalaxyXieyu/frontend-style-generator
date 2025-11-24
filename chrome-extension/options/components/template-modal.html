@@ -1,0 +1,45 @@
+<!-- 模板编辑弹窗 -->
+<div class="modal" id="templateModal" style="display: none;">
+  <div class="modal-overlay" id="templateModalOverlay"></div>
+  <div class="modal-content" style="max-width: 700px;">
+    <div class="modal-header">
+      <h3 id="templateModalTitle">新建模板</h3>
+      <button class="close-btn" id="closeTemplateModalBtn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    
+    <div class="modal-body">
+      <input type="hidden" id="editTemplateId">
+      
+      <div class="form-group">
+        <label>模板名称 <span style="color: #ef4444;">*</span></label>
+        <input type="text" id="templateName" class="input" placeholder="例如：详细分析模板">
+        <small>给这个模板起一个易识别的名称</small>
+      </div>
+      
+      <div class="form-group">
+        <label>模板描述</label>
+        <input type="text" id="templateDescription" class="input" placeholder="简单描述这个模板的用途">
+        <small>选填，帮助你记住这个模板的用途</small>
+      </div>
+      
+      <div class="form-group">
+        <label>提示词内容 <span style="color: #ef4444;">*</span></label>
+        <textarea id="templateContent" class="input" style="min-height: 300px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 13px;" placeholder="输入提示词内容..."></textarea>
+        <small>💡 支持 Markdown 格式，可以包含变量和指令</small>
+      </div>
+    </div>
+    
+    <div class="modal-footer">
+      <button class="btn-secondary" id="cancelTemplateModalBtn">
+        取消
+      </button>
+      <button id="saveTemplateBtn" class="btn-primary">
+        <span>保存</span>
+      </button>
+    </div>
+  </div>
+</div>

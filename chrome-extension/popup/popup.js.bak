@@ -7,6 +7,8 @@ class PopupController {
     this.currentMode = 'current'; // 'current' or 'all'
     this.tasks = [];
     this.domainCollapse = {};
+    this.selectedTasks = new Set(); // 选中的任务ID
+    this.queuePaused = false;
     this.init();
   }
   
@@ -209,7 +211,31 @@ class PopupController {
     const clearCompletedBtn = document.getElementById('clearCompletedBtn');
     if (clearCompletedBtn) {
       clearCompletedBtn.addEventListener('click', () => {
-        this.clearCompleted();
+        this.clearSelected();
+      });
+    }
+    
+    // 全选/取消全选
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener('click', () => {
+        this.toggleSelectAll();
+      });
+    }
+    
+    // 暂停队列
+    const pauseQueueBtn = document.getElementById('pauseQueueBtn');
+    if (pauseQueueBtn) {
+      pauseQueueBtn.addEventListener('click', () => {
+        this.pauseQueue();
+      });
+    }
+    
+    // 继续队列
+    const resumeQueueBtn = document.getElementById('resumeQueueBtn');
+    if (resumeQueueBtn) {
+      resumeQueueBtn.addEventListener('click', () => {
+        this.resumeQueue();
       });
     }
   }
@@ -359,7 +385,11 @@ class PopupController {
         
         if (batchResponse.success) {
           this.openTasksModal();
-          this.showNotification('success', `已添加 ${urls.length} 个任务到队列`);
+          let message = `已添加 ${urls.length} 个任务到队列`;
+          if (response.totalFound && response.totalFound > urls.length) {
+            message += `（共发现 ${response.totalFound} 个页面，已按深度排序并限制为前 ${urls.length} 个）`;
+          }
+          this.showNotification('success', message);
         }
       } else {
         this.showNotification('error', '未找到可提取的页面');
@@ -382,6 +412,9 @@ class PopupController {
         this.tasks = response.tasks;
         this.displayTasks(response.tasks);
         this.updateStats();
+        await this.updateQueueState();
+        this.updateClearButton();
+        this.updateSelectAllButton();
       }
     } catch (error) {
       console.error('加载任务失败:', error);
@@ -440,6 +473,12 @@ class PopupController {
 
       body.style.cssText = 'margin-top:8px;';
       body.style.display = collapsed ? 'none' : 'block';
+      
+      // 添加新增任务输入框（在任务列表之前）
+      const addTaskSection = this.createAddTaskInput(domain);
+      body.appendChild(addTaskSection);
+      
+      // 添加任务列表
       domainTasks.forEach(task => body.appendChild(this.createTaskItem(task)));
 
       header.addEventListener('click', () => {
@@ -453,6 +492,124 @@ class PopupController {
       group.appendChild(body);
       list.appendChild(group);
     });
+  }
+  
+  /**
+   * 创建新增任务输入框
+   */
+  createAddTaskInput(domain) {
+    const section = document.createElement('div');
+    section.className = 'add-task-section-inline';
+    section.style.cssText = 'margin-bottom: 12px;';
+    
+    const wrapper = document.createElement('div');
+    wrapper.className = 'add-task-input-wrapper';
+    wrapper.style.cssText = `
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      transition: all 0.2s;
+    `;
+    
+    // 图标
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('width', '16');
+    icon.setAttribute('height', '16');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('fill', 'none');
+    icon.style.cssText = 'color: var(--text-secondary); flex-shrink: 0;';
+    icon.innerHTML = `
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    `;
+    
+    // 输入框
+    const input = document.createElement('input');
+    input.type = 'url';
+    input.className = 'add-task-input';
+    input.placeholder = '输入 URL 添加新任务...';
+    input.dataset.domain = domain;
+    input.style.cssText = `
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 13px;
+      color: var(--text-primary);
+      font-family: inherit;
+    `;
+    
+    // 添加按钮
+    const button = document.createElement('button');
+    button.className = 'add-task-btn';
+    button.dataset.domain = domain;
+    button.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-gradient);
+      border: none;
+      border-radius: 6px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    `;
+    
+    const btnIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    btnIcon.setAttribute('width', '16');
+    btnIcon.setAttribute('height', '16');
+    btnIcon.setAttribute('viewBox', '0 0 24 24');
+    btnIcon.setAttribute('fill', 'none');
+    btnIcon.innerHTML = `<path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
+    button.appendChild(btnIcon);
+    
+    // 事件监听
+    wrapper.addEventListener('focusin', () => {
+      wrapper.style.borderColor = 'var(--accent-color)';
+      wrapper.style.boxShadow = '0 0 0 3px rgba(107, 157, 214, 0.1)';
+    });
+    
+    wrapper.addEventListener('focusout', () => {
+      wrapper.style.borderColor = 'var(--border-color)';
+      wrapper.style.boxShadow = 'none';
+    });
+    
+    button.addEventListener('mouseenter', () => {
+      button.style.transform = 'translateY(-1px)';
+      button.style.boxShadow = '0 4px 12px rgba(107, 157, 214, 0.3)';
+    });
+    
+    button.addEventListener('mouseleave', () => {
+      button.style.transform = 'translateY(0)';
+      button.style.boxShadow = 'none';
+    });
+    
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.addNewTask(domain, input);
+    });
+    
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.stopPropagation();
+        this.addNewTask(domain, input);
+      }
+    });
+    
+    wrapper.appendChild(icon);
+    wrapper.appendChild(input);
+    wrapper.appendChild(button);
+    section.appendChild(wrapper);
+    
+    return section;
   }
   
   /**
@@ -478,9 +635,12 @@ class PopupController {
       failed: '失败'
     };
     
+    const isSelected = this.selectedTasks.has(task.id);
+    
     item.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <input type="checkbox" class="task-checkbox" data-task-id="${task.id}" ${isSelected ? 'checked' : ''}>
+        <svg class="task-status-icon" width="22" height="22" viewBox="0 0 24 24" fill="none">
           ${statusIcons[task.status]}
         </svg>
         <div style="flex: 1; min-width: 0;">
@@ -491,17 +651,32 @@ class PopupController {
             ${task.url}
           </div>
         </div>
-        <div style="display:flex; align-items:center; gap:8px; font-size: 12px; font-weight: 600; color: var(--text-secondary);">
-          <span>${statusTexts[task.status]}</span>
-          <span>${task.progress}%</span>
+        <div style="display:flex; align-items:center; gap:8px; font-size: 12px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0;">
+          <span style="min-width: 50px; text-align: right;">${statusTexts[task.status]}</span>
+          <span style="min-width: 35px; text-align: right;">${task.progress}%</span>
         </div>
       </div>
       ${task.progress > 0 && task.progress < 100 ? `
         <div style="margin-top: 12px; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
-          <div style="height: 100%; background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%); width: ${task.progress}%; transition: width 0.3s;"></div>
+          <div style="height: 100%; background: var(--blue-gradient); width: ${task.progress}%; transition: width 0.3s;"></div>
         </div>
       ` : ''}
     `;
+    
+    // 绑定复选框事件
+    const checkbox = item.querySelector('.task-checkbox');
+    if (checkbox) {
+      checkbox.addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (e.target.checked) {
+          this.selectedTasks.add(task.id);
+        } else {
+          this.selectedTasks.delete(task.id);
+        }
+        this.updateClearButton();
+        this.updateSelectAllButton();
+      });
+    }
     
     return item;
   }
@@ -551,9 +726,16 @@ class PopupController {
   }
   
   /**
-   * 清除已完成任务
+   * 清除已完成任务或选中的任务
    */
   async clearCompleted() {
+    // 如果有选中的任务，清除选中的
+    if (this.selectedTasks.size > 0) {
+      await this.clearSelected();
+      return;
+    }
+    
+    // 否则清除已完成的任务
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'CLEAR_COMPLETED'
@@ -565,6 +747,264 @@ class PopupController {
       }
     } catch (error) {
       this.showNotification('error', '清除失败');
+    }
+  }
+  
+  /**
+   * 清除选中的任务
+   */
+  async clearSelected() {
+    if (this.selectedTasks.size === 0) {
+      this.showNotification('error', '请先选择要清除的任务');
+      return;
+    }
+    
+    const count = this.selectedTasks.size;
+    if (!confirm(`确定要删除 ${count} 个选中的任务吗？此操作不可恢复。`)) {
+      return;
+    }
+    
+    try {
+      // 批量删除选中的任务
+      const deletePromises = Array.from(this.selectedTasks).map(taskId =>
+        chrome.runtime.sendMessage({
+          type: 'DELETE_TASK',
+          taskId
+        })
+      );
+      
+      await Promise.all(deletePromises);
+      
+      this.selectedTasks.clear();
+      await this.loadTasks();
+      this.showNotification('success', `已删除 ${count} 个任务`);
+    } catch (error) {
+      this.showNotification('error', '删除失败：' + error.message);
+    }
+  }
+  
+  /**
+   * 全选/取消全选
+   */
+  toggleSelectAll() {
+    if (this.selectedTasks.size === this.tasks.length) {
+      // 全部取消选中
+      this.selectedTasks.clear();
+    } else {
+      // 全选
+      this.tasks.forEach(task => this.selectedTasks.add(task.id));
+    }
+    this.displayTasks(this.tasks);
+    this.updateClearButton();
+    this.updateSelectAllButton();
+  }
+  
+  /**
+   * 更新清除按钮文本
+   */
+  updateClearButton() {
+    const clearBtn = document.getElementById('clearCompletedBtn');
+    if (clearBtn) {
+      if (this.selectedTasks.size > 0) {
+        clearBtn.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>清除选中 (${this.selectedTasks.size})</span>
+        `;
+      } else {
+        clearBtn.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>清除已完成</span>
+        `;
+      }
+    }
+  }
+  
+  /**
+   * 更新全选按钮文本
+   */
+  updateSelectAllButton() {
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    if (selectAllBtn) {
+      const allSelected = this.tasks.length > 0 && this.selectedTasks.size === this.tasks.length;
+      selectAllBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+          ${allSelected ? '<path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' : ''}
+        </svg>
+        <span>${allSelected ? '取消全选' : '全选'}</span>
+      `;
+    }
+  }
+  
+  /**
+   * 更新队列状态
+   */
+  async updateQueueState() {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'GET_QUEUE_STATE'
+      });
+      
+      if (response.success) {
+        this.queuePaused = response.state.paused;
+        
+        const pauseBtn = document.getElementById('pauseQueueBtn');
+        const resumeBtn = document.getElementById('resumeQueueBtn');
+        
+        if (pauseBtn && resumeBtn) {
+          if (this.queuePaused) {
+            pauseBtn.style.display = 'none';
+            resumeBtn.style.display = 'flex';
+          } else {
+            pauseBtn.style.display = 'flex';
+            resumeBtn.style.display = 'none';
+          }
+        }
+      }
+    } catch (error) {
+      console.error('获取队列状态失败:', error);
+    }
+  }
+  
+  /**
+   * 暂停队列
+   */
+  async pauseQueue() {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'PAUSE_QUEUE'
+      });
+      
+      if (response.success) {
+        await this.updateQueueState();
+        this.showNotification('success', '队列已暂停');
+      }
+    } catch (error) {
+      this.showNotification('error', '暂停失败');
+    }
+  }
+  
+  /**
+   * 继续队列
+   */
+  async resumeQueue() {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'RESUME_QUEUE'
+      });
+      
+      if (response.success) {
+        await this.updateQueueState();
+        this.showNotification('success', '队列已继续');
+      }
+    } catch (error) {
+      this.showNotification('error', '继续失败');
+    }
+  }
+  
+  /**
+   * 新增任务
+   */
+  async addNewTask(domain, inputElement) {
+    let urlValue = inputElement.value.trim();
+    
+    if (!urlValue) {
+      this.showNotification('error', '请输入 URL');
+      return;
+    }
+    
+    // 如果输入的不是完整 URL，尝试补全域名
+    let fullUrl = urlValue;
+    if (!urlValue.startsWith('http://') && !urlValue.startsWith('https://')) {
+      // 如果只是路径，补全域名和协议
+      if (urlValue.startsWith('/')) {
+        fullUrl = `https://${domain}${urlValue}`;
+      } else {
+        // 尝试作为完整 URL
+        fullUrl = `https://${urlValue}`;
+      }
+    }
+    
+    // 验证 URL
+    try {
+      const parsedUrl = new URL(fullUrl);
+      // 检查域名是否匹配（如果输入的是完整URL，允许不同域名）
+      if (urlValue.startsWith('/') && parsedUrl.hostname !== domain) {
+        parsedUrl.hostname = domain;
+        fullUrl = parsedUrl.toString();
+      }
+    } catch (e) {
+      this.showNotification('error', '请输入有效的 URL');
+      return;
+    }
+    
+    try {
+      // 获取当前提取选项
+      const result = await chrome.storage.local.get(['extractOptions']);
+      const options = result.extractOptions || {
+        inlineCSS: true,
+        collectImages: true,
+        collectFonts: true
+      };
+      
+      // 添加任务到队列
+      const response = await chrome.runtime.sendMessage({
+        type: 'ADD_TASK',
+        url: fullUrl,
+        options
+      });
+      
+      if (response.success) {
+        // 清空输入框
+        inputElement.value = '';
+        
+        // 刷新任务列表
+        await this.loadTasks();
+        
+        // 显示成功提示
+        const message = this.queuePaused 
+          ? '任务已添加到队列（队列已暂停）' 
+          : '任务已添加到队列';
+        this.showNotification('success', message);
+      } else {
+        this.showNotification('error', response.error || '添加任务失败');
+      }
+    } catch (error) {
+      this.showNotification('error', '添加任务失败：' + error.message);
+    }
+  }
+  
+  /**
+   * 编辑任务
+   */
+  async editTask(task) {
+    const newUrl = prompt('请输入新的 URL：', task.url);
+    
+    if (newUrl && newUrl !== task.url) {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: 'EDIT_TASK_URL',
+          taskId: task.id,
+          newUrl
+        });
+        
+        if (response.success) {
+          await this.loadTasks();
+          this.showNotification('success', '任务已更新');
+        } else {
+          this.showNotification('error', response.error || '编辑失败');
+        }
+      } catch (error) {
+        this.showNotification('error', '编辑失败：' + error.message);
+      }
     }
   }
   

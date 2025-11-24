@@ -136,6 +136,17 @@ class RouteScanner {
   }
   
   /**
+   * 按路由深度排序（从浅到深）
+   */
+  sortRoutesByDepth(routes) {
+    return routes.sort((a, b) => {
+      const depthA = a.split('/').filter(Boolean).length;
+      const depthB = b.split('/').filter(Boolean).length;
+      return depthA - depthB;
+    });
+  }
+
+  /**
    * 过滤路由
    */
   filterRoutes(routes, options = {}) {
@@ -160,6 +171,9 @@ class RouteScanner {
       return true;
     });
     
+    // 按深度排序（从浅到深）
+    filtered = this.sortRoutesByDepth(filtered);
+    
     // 限制数量
     if (limit !== null) {
       filtered = filtered.slice(0, limit);
@@ -174,13 +188,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'scanRoutes') {
     const scanner = new RouteScanner();
     const routes = scanner.scanCurrentPage();
-    const groups = scanner.groupRoutes(routes);
+    
+    // 按深度排序并限制为最多10个
+    const filteredRoutes = scanner.filterRoutes(routes, {
+      limit: 10
+    });
+    
+    const groups = scanner.groupRoutes(filteredRoutes);
     
     sendResponse({
       success: true,
-      routes,
+      routes: filteredRoutes,
       groups,
-      total: routes.length
+      total: filteredRoutes.length,
+      totalFound: routes.length
     });
     
     return true;

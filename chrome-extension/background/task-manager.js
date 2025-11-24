@@ -7,13 +7,14 @@ class TaskManager {
     this.tasks = new Map();
     this.queue = [];
     this.running = false;
+    this.paused = false; // 队列是否暂停
     this.maxConcurrent = 1; // 一次只处理一个任务
     this.init();
   }
   
   async init() {
-    // 从存储中恢复任务
-    const stored = await chrome.storage.local.get('tasks');
+    // 从存储中恢复任务和暂停状态
+    const stored = await chrome.storage.local.get(['tasks', 'queuePaused']);
     if (stored.tasks) {
       this.tasks = new Map(Object.entries(stored.tasks));
       this.queue = Array.from(this.tasks.keys()).filter(id => {
@@ -21,6 +22,9 @@ class TaskManager {
         return task.status === 'pending' || task.status === 'running';
       });
     }
+    
+    // 恢复暂停状态
+    this.paused = stored.queuePaused || false;
     
     // 恢复运行中的任务为待处理
     this.tasks.forEach(task => {
@@ -31,8 +35,8 @@ class TaskManager {
     
     await this.saveTasks();
     
-    // 如果有待处理的任务，继续执行
-    if (this.queue.length > 0) {
+    // 如果有待处理的任务且未暂停，继续执行
+    if (this.queue.length > 0 && !this.paused) {
       this.processQueue();
     }
   }
@@ -94,7 +98,7 @@ class TaskManager {
     
     this.running = true;
     
-    while (this.queue.length > 0) {
+    while (this.queue.length > 0 && !this.paused) {
       const taskId = this.queue.shift();
       const task = this.tasks.get(taskId);
       
@@ -103,6 +107,13 @@ class TaskManager {
       }
       
       await this.executeTask(taskId);
+      
+      // 检查是否暂停
+      if (this.paused) {
+        // 把任务放回队列开头
+        this.queue.unshift(taskId);
+        break;
+      }
     }
     
     this.running = false;
@@ -370,6 +381,68 @@ class TaskManager {
   }
   
   /**
+   * 暂停任务队列
+   */
+  async pauseQueue() {
+    this.paused = true;
+    await chrome.storage.local.set({ queuePaused: true });
+    this.notifyUpdate();
+  }
+  
+  /**
+   * 继续任务队列
+   */
+  async resumeQueue() {
+    this.paused = false;
+    await chrome.storage.local.set({ queuePaused: false });
+    this.notifyUpdate();
+    
+    // 继续处理队列
+    if (this.queue.length > 0 && !this.running) {
+      this.processQueue();
+    }
+  }
+  
+  /**
+   * 获取队列状态
+   */
+  getQueueState() {
+    return {
+      paused: this.paused,
+      running: this.running,
+      queueLength: this.queue.length
+    };
+  }
+  
+  /**
+   * 编辑任务 URL
+   */
+  async editTaskUrl(taskId, newUrl) {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error('任务不存在');
+    }
+    
+    // 只能编辑待处理的任务
+    if (task.status !== 'pending') {
+      throw new Error('只能编辑待处理的任务');
+    }
+    
+    // 验证 URL
+    try {
+      const url = new URL(newUrl);
+      task.url = newUrl;
+      task.domain = url.hostname;
+      task.title = url.pathname;
+      
+      await this.saveTasks();
+      this.notifyUpdate();
+    } catch (e) {
+      throw new Error('无效的 URL');
+    }
+  }
+  
+  /**
    * 取消任务
    */
   async cancelTask(taskId) {
@@ -384,6 +457,26 @@ class TaskManager {
       if (index > -1) {
         this.queue.splice(index, 1);
       }
+      
+      await this.saveTasks();
+      this.notifyUpdate();
+    }
+  }
+  
+  /**
+   * 删除任务
+   */
+  async deleteTask(taskId) {
+    const task = this.tasks.get(taskId);
+    if (task) {
+      // 从队列中移除
+      const index = this.queue.indexOf(taskId);
+      if (index > -1) {
+        this.queue.splice(index, 1);
+      }
+      
+      // 从任务列表中删除
+      this.tasks.delete(taskId);
       
       await this.saveTasks();
       this.notifyUpdate();
@@ -470,6 +563,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       }
     })();
+    return true;
+  }
+  
+  if (request.type === 'PAUSE_QUEUE') {
+    taskManager.pauseQueue()
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  
+  if (request.type === 'RESUME_QUEUE') {
+    taskManager.resumeQueue()
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  
+  if (request.type === 'GET_QUEUE_STATE') {
+    sendResponse({ success: true, state: taskManager.getQueueState() });
+    return true;
+  }
+  
+  if (request.type === 'EDIT_TASK_URL') {
+    taskManager.editTaskUrl(request.taskId, request.newUrl)
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  
+  if (request.type === 'DELETE_TASK') {
+    taskManager.deleteTask(request.taskId)
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
 });
