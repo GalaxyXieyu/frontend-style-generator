@@ -68,8 +68,8 @@ class PopupController {
    * 加载配置
    */
   async loadConfig() {
-    const result = await chrome.storage.local.get(['aiModels']);
-    const aiModels = result.aiModels || [];
+    const result = await chrome.storage.local.get(['aiModels', 'sg_aiModels', 'generateConfig', 'sg_generateConfig']);
+    const aiModels = result.sg_aiModels || result.aiModels || [];
     
     // 获取默认模型
     const defaultModel = aiModels.find(m => m.isDefault) || aiModels[0] || null;

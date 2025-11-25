@@ -23,10 +23,27 @@
 ### 安装插件（1 分钟）
 
 1. 打开 Chrome 浏览器，访问 `chrome://extensions/`
-2. 开启右上角的"开发者模式"
-3. 点击"加载已解压的扩展程序"
-4. 选择 `chrome-extension` 文件夹
-5. 完成！
+2. 开启右上角的“开发者模式”
+3. 点击“加载已解压的扩展程序”
+4. 在弹出的目录选择器中，选择项目内的 `chrome-extension` 文件夹（确保其中存在 `manifest.json`）
+5. 安装成功后，扩展页会出现“Design-Learn”，浏览器工具栏显示插件图标
+
+提示：
+- 选择子目录（如 `chrome-extension/popup`）会导致安装失败，请务必选择 `chrome-extension` 根目录
+- Edge 使用 `edge://extensions/`，Brave 使用 `brave://extensions/`，其余步骤一致
+
+#### 选择哪个文件夹？
+- 克隆或下载本仓库后，必须选择仓库中的 `chrome-extension/` 目录作为“已解压的扩展程序”目录
+- 快速自检：选中的目录内应包含文件 `manifest.json`
+
+路径示例（macOS）：
+- `~/.../Design-Learn/chrome-extension`
+
+常见错误目录（不要选择）
+- 仓库根目录：`~/.../Design-Learn/`（错误）
+- 子模块目录：`~/.../Design-Learn/chrome-extension/popup`（错误）
+- 子模块目录：`~/.../Design-Learn/chrome-extension/background`（错误）
+- 单个文件或压缩包：`Design-Learn-3.0.0.zip`（错误，开发模式需选择文件夹）
 
 ### 使用插件（5 秒）
 
@@ -35,6 +52,51 @@
 3. 点击"提取页面风格"按钮
 4. 等待 2-5 秒，提取完成
 5. 可以预览、下载或查看历史记录
+
+## 🧩 本地安装详细指南
+
+### 前提条件
+- Chrome 115+，支持 Manifest V3
+- 可选：Microsoft Edge（Chromium）或 Brave（同样支持加载已解压扩展）
+
+### 安装步骤（详细）
+1. 进入扩展管理页面：`chrome://extensions/`
+2. 打开右上角“开发者模式”
+3. 点击“加载已解压的扩展程序”
+4. 选择项目中的 `chrome-extension` 目录（包含 `manifest.json`）
+5. 安装完成后，看到 `Design-Learn` 条目与工具栏图标
+
+### 安装验证
+- 在扩展页面确认名称与版本号：应显示 `Design-Learn v3.0.0`
+- 点击工具栏图标应弹出插件 Popup 窗口
+- 扩展详情 → 背景页/Service Worker 应显示为“活动”状态
+
+### 首次使用配置
+1. 打开插件的设置页（Options）
+2. 在“AI 模型”中配置 `API Key`、`Base URL`、`Model Id` 等
+3. 在“生成配置”中设置语言与分析偏好
+4. 返回网页，点击提取并触发 AI 分析生成 Markdown 报告
+
+### 更新与重载
+- 修改源码后，可在 `chrome://extensions/` 点击“重新加载”，Service Worker 将重启
+- 内容脚本更新后，需刷新目标页面以重新注入
+- 若遇到旧状态，可在扩展详情中停止/启动后台页以刷新
+
+### 权限说明
+- `activeTab`：读取当前活动标签页内容用于提取
+- `storage`：使用 Chrome Storage 保存本地配置与快照
+- `downloads`：支持将提取结果导出为 HTML 文件
+
+### 常见问题与排错
+- 未显示图标或安装失败：确认选择的是 `chrome-extension` 根目录并已开启开发者模式
+- `Manifest` 报错：检查 `chrome-extension/manifest.json` 是否存在且为 `manifest_version: 3`
+- 内容脚本不生效：刷新目标页面；特殊页面（如 `chrome://`、扩展商店页面）不支持注入
+- AI 调用失败：在设置页正确配置 `API Key`、`Base URL`、`Model Id`；检查网络与配额
+- 后台未运行：在扩展详情查看 Service Worker 状态或点击“重新加载”
+
+### 其他浏览器
+- Edge：地址栏输入 `edge://extensions/`，步骤同 Chrome
+- Brave：地址栏输入 `brave://extensions/`，步骤同 Chrome
 
 ## 📦 项目结构
 
@@ -261,10 +323,7 @@ frontend-style-generator/
 ## 📖 文档
 
 ### 插件文档
-- [插件安装指南](chrome-extension/INSTALL.md)
-- [功能总结](chrome-extension/SUMMARY.md)
-- [测试指南](chrome-extension/TEST.md)
-- **[提示词模板功能说明](chrome-extension/options/TEMPLATE_FEATURE.md)** ⭐️ 新增
+- 本地安装与使用指南：见本文档“安装插件（1 分钟）”与“本地安装详细指南”章节
 
 ### 开发文档
 - [需求分析](docs/requirements.md)
@@ -313,13 +372,10 @@ MIT License
 # 1. 进入插件目录
 cd chrome-extension
 
-# 2. 查看安装指南
-cat INSTALL.md
-
-# 3. 在 Chrome 中加载插件
+# 2. 在 Chrome 中加载插件
 # chrome://extensions/ → 开发者模式 → 加载已解压的扩展程序
 
-# 4. 开始使用！
+# 3. 开始使用！
 # 访问任意网页，点击插件图标，提取页面风格
 ```
 

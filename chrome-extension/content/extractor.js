@@ -124,21 +124,16 @@ class PageExtractor {
           cssTexts.push(`/* Stylesheet: ${href} */\n${css}`);
         }
       } catch (e) {
-        // 跨域样式表，尝试 fetch（仅同源）
         if (sheet.href) {
           try {
-            const sheetUrl = new URL(sheet.href);
-            const pageUrl = new URL(window.location.href);
-            
-            // 只尝试同源的样式表
-            if (sheetUrl.origin === pageUrl.origin) {
-              console.log('[StyleGenerator] Fetching external stylesheet:', sheet.href);
-              const response = await fetch(sheet.href);
+            console.log('[StyleGenerator] 尝试通过 fetch 获取样式表:', sheet.href);
+            const response = await fetch(sheet.href, { mode: 'cors', credentials: 'omit' });
+            if (response.ok) {
               const css = await response.text();
               cssTexts.push(`/* External: ${sheet.href} */\n${css}`);
             } else {
-              console.warn('[StyleGenerator] 跳过跨域样式表:', sheet.href);
-              cssTexts.push(`/* Cross-origin stylesheet skipped: ${sheet.href} */`);
+              console.warn('[StyleGenerator] 样式表响应非 2xx:', sheet.href, response.status);
+              cssTexts.push(`/* Failed to load (status ${response.status}): ${sheet.href} */`);
             }
           } catch (fetchError) {
             console.warn('[StyleGenerator] 无法获取样式表:', sheet.href, fetchError.message);

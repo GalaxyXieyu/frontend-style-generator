@@ -11,13 +11,13 @@ class AIAnalyzer {
    * 加载配置
    */
   async loadConfig() {
-    const result = await chrome.storage.local.get(['aiModels', 'generateConfig']);
-    const aiModels = result.aiModels || [];
+    const result = await chrome.storage.local.get(['aiModels', 'sg_aiModels', 'generateConfig', 'sg_generateConfig']);
+    const aiModels = result.sg_aiModels || result.aiModels || [];
     const defaultModel = aiModels.find(m => m.isDefault) || aiModels[0] || null;
     
     this.config = {
       ai: defaultModel || {},
-      generate: result.generateConfig || {}
+      generate: result.sg_generateConfig || result.generateConfig || {}
     };
     return this.config;
   }
