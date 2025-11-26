@@ -309,6 +309,35 @@ class OptionsApp {
     }
 
     list.innerHTML = items.map(item => this.createHistoryItem(item)).join('');
+    this.bindHistoryItemEvents(list);
+  }
+
+  /**
+   * 绑定历史记录项事件（事件委托）
+   */
+  bindHistoryItemEvents(container) {
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+
+      switch (action) {
+        case 'viewHtml':
+          this.viewHtml(id);
+          break;
+        case 'viewMarkdown':
+          this.viewMarkdown(id);
+          break;
+        case 'generateMarkdown':
+          this.generateMarkdown(id);
+          break;
+        case 'downloadSnapshot':
+          this.downloadSnapshot(id);
+          break;
+      }
+    });
   }
 
   /**
@@ -326,19 +355,19 @@ class OptionsApp {
             <div class="history-url">${item.url}</div>
           </div>
           <div class="history-actions">
-            <button class="action-btn" onclick="window.app.viewHtml('${item.id}')">
+            <button class="action-btn" data-action="viewHtml" data-id="${item.id}">
               查看 HTML
             </button>
             ${hasMarkdown ? `
-              <button class="action-btn primary" onclick="window.app.viewMarkdown('${item.id}')">
+              <button class="action-btn primary" data-action="viewMarkdown" data-id="${item.id}">
                 查看分析
               </button>
             ` : `
-              <button class="action-btn" onclick="window.app.generateMarkdown('${item.id}')">
+              <button class="action-btn" data-action="generateMarkdown" data-id="${item.id}">
                 生成分析
               </button>
             `}
-            <button class="action-btn" onclick="window.app.downloadSnapshot('${item.id}')">
+            <button class="action-btn" data-action="downloadSnapshot" data-id="${item.id}">
               下载
             </button>
           </div>
