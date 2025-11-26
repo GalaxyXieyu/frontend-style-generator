@@ -11,7 +11,12 @@ class AIAnalyzer {
    * 加载配置
    */
   async loadConfig() {
-    const result = await chrome.storage.local.get(['aiModels', 'sg_aiModels', 'generateConfig', 'sg_generateConfig']);
+    const result = await chrome.storage.local.get([
+      'aiModels', 'sg_aiModels', 
+      'generateConfig', 'sg_generateConfig',
+      'promptTemplates', 'sg_promptTemplates',
+      'currentTemplateId', 'sg_currentTemplateId'
+    ]);
     console.log('[AIAnalyzer] Storage 原始数据:', JSON.stringify(result, null, 2));
     
     const aiModels = result.sg_aiModels || result.aiModels || [];
@@ -20,9 +25,16 @@ class AIAnalyzer {
     const defaultModel = aiModels.find(m => m.isDefault) || aiModels[0] || null;
     console.log('[AIAnalyzer] 默认模型:', defaultModel ? `${defaultModel.name} (${defaultModel.modelId})` : '未配置');
     
+    // 加载提示词模板
+    const templates = result.sg_promptTemplates || result.promptTemplates || [];
+    const currentTemplateId = result.sg_currentTemplateId || result.currentTemplateId;
+    const currentTemplate = templates.find(t => t.id === currentTemplateId) || templates[0] || null;
+    console.log('[AIAnalyzer] 当前模板:', currentTemplate ? currentTemplate.name : '使用默认');
+    
     this.config = {
       ai: defaultModel || {},
-      generate: result.sg_generateConfig || result.generateConfig || {}
+      generate: result.sg_generateConfig || result.generateConfig || {},
+      template: currentTemplate
     };
     
     // 检查关键配置
@@ -49,17 +61,41 @@ class AIAnalyzer {
       throw new Error('请先在设置中配置 AI API Key');
     }
 
-    // 构建 Prompt
-    const prompt = this.buildPrompt(snapshot);
+    // 构建 System Prompt（来自用户模板）和 User Prompt（来自勾选项）
+    const systemPrompt = this.getSystemPrompt();
+    const userPrompt = this.buildUserPrompt(snapshot);
 
     // 调用 AI
-    const response = await this.callAI(prompt);
+    const response = await this.callAI(systemPrompt, userPrompt);
 
-    // 解析响应
-    const analysis = this.parseResponse(response);
-    const markdown = this.generateMarkdown(snapshot, analysis);
-    const format = analysis && analysis.raw ? 'raw' : 'json';
-    return { analysis, markdown, format };
+    // 直接使用 AI 返回的 Markdown 作为报告
+    const markdown = this.wrapMarkdownReport(snapshot, response);
+    
+    return { analysis: { raw: true, content: response }, markdown, format: 'markdown' };
+  }
+
+  /**
+   * 包装 Markdown 报告（添加头部信息）
+   */
+  wrapMarkdownReport(snapshot, content) {
+    const lines = [];
+    lines.push(`# ${snapshot.title} - 设计风格分析报告`);
+    lines.push('');
+    lines.push(`> **分析时间**: ${new Date().toLocaleString('zh-CN')}`);
+    lines.push(`> **页面 URL**: ${snapshot.url}`);
+    lines.push(`> **采集时间**: ${new Date(snapshot.extractedAt).toLocaleString('zh-CN')}`);
+    lines.push(`> **视口尺寸**: ${snapshot.metadata.viewport.width} x ${snapshot.metadata.viewport.height}`);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(content);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(`*本报告由 Frontend Style Generator AI 自动生成*`);
+    lines.push(`*使用模板: ${this.config.template?.name || '默认模板'}*`);
+    lines.push(`*生成时间: ${new Date().toLocaleString('zh-CN')}*`);
+    return lines.join('\n');
   }
 
   /**
@@ -72,125 +108,325 @@ class AIAnalyzer {
       throw new Error('请先在设置中配置 AI API Key');
     }
 
-    const prompt = this.buildBatchPrompt(snapshots);
-    const response = await this.callAI(prompt);
-    const analysis = this.parseResponse(response);
-    const markdown = this.generateBatchMarkdown(snapshots, analysis);
-    const format = analysis && analysis.raw ? 'raw' : 'json';
-    return { analysis, markdown, format };
+    const systemPrompt = this.getSystemPrompt();
+    const userPrompt = this.buildBatchPrompt(snapshots);
+    const response = await this.callAI(systemPrompt, userPrompt);
+    
+    // 直接使用 AI 返回的 Markdown
+    const markdown = this.wrapBatchMarkdownReport(snapshots, response);
+    return { analysis: { raw: true, content: response }, markdown, format: 'markdown' };
+  }
+
+  /**
+   * 包装批量分析 Markdown 报告
+   */
+  wrapBatchMarkdownReport(snapshots, content) {
+    const lines = [];
+    lines.push(`# 批量设计风格分析报告`);
+    lines.push('');
+    lines.push(`> **分析时间**: ${new Date().toLocaleString('zh-CN')}`);
+    lines.push(`> **页面数量**: ${snapshots.length}`);
+    lines.push('');
+    lines.push('## 分析页面列表');
+    lines.push('');
+    snapshots.forEach((s, i) => {
+      lines.push(`${i + 1}. [${s.title}](${s.url})`);
+    });
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(content);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(`*本报告由 Frontend Style Generator AI 自动生成*`);
+    lines.push(`*使用模板: ${this.config.template?.name || '默认模板'}*`);
+    lines.push(`*生成时间: ${new Date().toLocaleString('zh-CN')}*`);
+    return lines.join('\n');
   }
   
   /**
-   * 构建分析 Prompt
+   * 获取 System Prompt（来自用户模板）
    */
-  buildPrompt(snapshot) {
+  getSystemPrompt() {
+    // 优先使用用户模板
+    if (this.config.template && this.config.template.content) {
+      return this.config.template.content;
+    }
+    
+    // 默认 system prompt
+    const lang = this.config.generate.language || 'zh-CN';
+    const preferZh = lang === 'zh-CN';
+    
+    if (preferZh) {
+      return `你是一位资深的前端设计系统专家，擅长从网页源码中提取设计规范并输出专业的设计系统文档。
+
+## 你的任务
+分析提供的网页 HTML 和 CSS，输出一份详尽的设计风格指南（STYLEGUIDE.md），帮助开发者理解和复用该网站的设计系统。
+
+## 输出要求
+
+### 1. 格式规范
+- 使用清晰的 Markdown 格式，包含多级标题
+- 每个章节都要有**自然语言描述**解释设计意图和使用场景
+- 提供**具体的代码示例**（Tailwind 类名、CSS 代码、组件代码片段）
+- 使用表格整理设计令牌（如颜色、字号、间距等）
+
+### 2. 内容深度
+- **设计令牌**：提取具体的色值（如 #0076ff）、字体族、阴影值等，不要只写占位符
+- **组件风格**：为每个组件提供完整的 TSX/JSX 示例代码，包含样式类名
+- **使用建议**：说明何时使用、如何组合、注意事项
+- **明暗主题**：如果页面支持，分别说明 light/dark 模式的样式差异
+
+### 3. 示例代码要求
+- 组件代码使用 React + Tailwind CSS 风格
+- 代码要完整可运行，包含必要的 import
+- 使用 \`\`\`tsx 代码块标注语言
+
+### 4. 专业性
+- 参考 Aceternity UI、Shadcn UI 等专业设计系统的文档风格
+- 使用设计系统术语（Design Tokens、Semantic Colors、Typography Scale 等）
+- 提供 Do & Don't 最佳实践建议
+
+## 输出结构参考
+1. 概览（设计语言、技术栈、主题机制）
+2. 设计令牌（颜色、字体、阴影、动效变量）
+3. 配色系统（文本色、背景色、边框色、品牌色）
+4. 排版系统（字体栈、标题层级、正文样式）
+5. 间距系统（容器、栅格、常用间距原子）
+6. 组件风格（导航、按钮、卡片、表单等，每个都要有示例代码）
+7. 阴影与层次
+8. 动效与过渡
+9. 圆角规范
+10. 无障碍建议
+11. 常用 Tailwind 模式
+12. 示例代码（2-3个完整组件示例）
+13. 约定与最佳实践（Do & Don't）
+
+请确保输出内容详尽、专业、可直接用于团队开发参考。`;
+    } else {
+      return `You are a senior frontend design system expert, skilled at extracting design specifications from web source code and producing professional design system documentation.
+
+## Your Task
+Analyze the provided HTML and CSS, and output a comprehensive STYLEGUIDE.md that helps developers understand and reuse the website's design system.
+
+## Output Requirements
+
+### 1. Format Standards
+- Use clear Markdown format with multi-level headings
+- Each section should have **natural language descriptions** explaining design intent and use cases
+- Provide **specific code examples** (Tailwind classes, CSS code, component snippets)
+- Use tables to organize design tokens (colors, font sizes, spacing, etc.)
+
+### 2. Content Depth
+- **Design Tokens**: Extract specific values (e.g., #0076ff), font families, shadow values - no placeholders
+- **Component Styles**: Provide complete TSX/JSX example code for each component with style classes
+- **Usage Guidelines**: Explain when to use, how to combine, and important notes
+- **Light/Dark Themes**: If supported, describe style differences for both modes
+
+### 3. Code Example Requirements
+- Use React + Tailwind CSS style for component code
+- Code should be complete and runnable, including necessary imports
+- Use \`\`\`tsx code blocks with language annotation
+
+### 4. Professionalism
+- Reference documentation style from Aceternity UI, Shadcn UI, and other professional design systems
+- Use design system terminology (Design Tokens, Semantic Colors, Typography Scale, etc.)
+- Provide Do & Don't best practice recommendations
+
+## Output Structure Reference
+1. Overview (design language, tech stack, theme mechanism)
+2. Design Tokens (colors, fonts, shadows, motion variables)
+3. Color System (text, background, border, brand colors)
+4. Typography System (font stack, heading hierarchy, body styles)
+5. Spacing System (container, grid, common spacing atoms)
+6. Component Styles (navbar, button, card, form, etc. - each with example code)
+7. Shadows & Elevation
+8. Animations & Transitions
+9. Border Radius
+10. Accessibility Guidelines
+11. Common Tailwind Patterns
+12. Example Code (2-3 complete component examples)
+13. Conventions & Best Practices (Do & Don't)
+
+Ensure the output is comprehensive, professional, and directly usable as a team development reference.`;
+    }
+  }
+
+  /**
+   * 构建 User Prompt（基于勾选项动态生成）
+   */
+  buildUserPrompt(snapshot) {
     const sections = [];
     const vp = `${snapshot.metadata.viewport.width}x${snapshot.metadata.viewport.height}`;
     const lang = this.config.generate.language || 'zh-CN';
     const preferZh = lang === 'zh-CN';
-    const intro = preferZh ? '你是一位资深的前端设计系统专家，请根据提供的页面快照输出高精度的风格分析。' : 'You are a senior design system expert. Produce a high-fidelity style analysis.';
-    sections.push(intro);
-    sections.push(preferZh ? `页面: ${snapshot.title} | URL: ${snapshot.url} | 视口: ${vp}` : `Page: ${snapshot.title} | URL: ${snapshot.url} | Viewport: ${vp}`);
-
-    sections.push(preferZh ? `请严格按以下 JSON Schema 输出（不要包含除 JSON 以外的任何文本）：` : `Output strictly as JSON (no extra text), following this schema:`);
-    sections.push(`\n\`\`\`json`);
-    sections.push(JSON.stringify({
-      overview: {
-        design_language: '',
-        tech_stack: '',
-        theme_mechanism: '',
-        components_pattern: ''
-      },
-      design_tokens: {
-        fonts: { primary: [], mono: [] },
-        colors: { base: {}, brand: '', mapping: { light: {}, dark: {} }, tailwind_expose: [] },
-        shadows: [],
-        backgrounds: [],
-        motions: []
-      },
-      color_palette: {
-        text: { primary: '', secondary: [], brand: '' },
-        backgrounds: { page: {}, card: {}, overlay: {}, accent: {} },
-        borders: { divide: '' }
-      },
-      typography: {
-        fonts: { primary: '', mono: '' },
-        headings: { page: {}, section: {}, sub: {}, kicker: {} },
-        body: { prose: '', weights: {}, tracking: 'tracking-tight' }
-      },
-      spacing_system: {
-        container: { max: 'max-w-7xl', padding: ['px-4','md:px-8'], vertical: ['py-16','py-20','py-40'] },
-        grid: { cols: ['grid-cols-1','md:grid-cols-2','lg:grid-cols-3'], gaps: ['gap-4','gap-6','gap-10','gap-20'] },
-        atoms: { sizes: [], minH: [] }
-      },
-      components: {
-        navbar: {},
-        button: {},
-        card: {},
-        table: {},
-        badge: {},
-        input: {}
-      },
-      shadows_elevation: [],
-      animations_transitions: [],
-      border_radius: {},
-      opacity_transparency: {},
-      tailwind_usage: [],
-      examples: {},
-      a11y: { contrast: '>=4.5:1', focus: '' },
-      summary: ''
-    }, null, 2));
-    sections.push(`\n\`\`\``);
-
-    sections.push(preferZh ? `输入快照（截断）HTML:` : `Snapshot (truncated) HTML:`);
+    const gen = this.config.generate || {};
+    
+    // 页面信息
+    sections.push(preferZh 
+      ? `## 页面信息\n- 标题: ${snapshot.title}\n- URL: ${snapshot.url}\n- 视口: ${vp}`
+      : `## Page Info\n- Title: ${snapshot.title}\n- URL: ${snapshot.url}\n- Viewport: ${vp}`);
+    sections.push('');
+    
+    // 根据勾选项构建分析要求
+    sections.push(preferZh ? '## 请分析以下内容：' : '## Please analyze the following:');
+    sections.push('');
+    
+    const analysisItems = [];
+    
+    if (gen.includeColors !== false) {
+      analysisItems.push(preferZh 
+        ? '### 1. 配色系统\n- 主色调、辅助色、中性色\n- 明暗主题的颜色映射\n- 品牌色使用规范\n- 具体色值和 Tailwind 类名'
+        : '### 1. Color System\n- Primary, secondary, neutral colors\n- Light/dark theme color mapping\n- Brand color usage\n- Specific color values and Tailwind classes');
+    }
+    
+    if (gen.includeTypography !== false) {
+      analysisItems.push(preferZh
+        ? '### 2. 字体系统\n- 字体族（主字体、等宽字体）\n- 标题层级（页标题、分节标题、副标题）\n- 正文样式（字号、行高、字重）\n- 具体的 font-family 和 Tailwind 类名'
+        : '### 2. Typography\n- Font families (primary, mono)\n- Heading hierarchy (page, section, sub)\n- Body styles (size, line-height, weight)\n- Specific font-family and Tailwind classes');
+    }
+    
+    if (gen.includeLayout !== false) {
+      analysisItems.push(preferZh
+        ? '### 3. 布局与间距\n- 容器宽度和内边距\n- 栅格系统（列数、间距）\n- 垂直间距规范\n- 响应式断点'
+        : '### 3. Layout & Spacing\n- Container width and padding\n- Grid system (columns, gaps)\n- Vertical spacing\n- Responsive breakpoints');
+    }
+    
+    if (gen.includeComponents !== false) {
+      analysisItems.push(preferZh
+        ? '### 4. 组件风格\n- 导航栏样式\n- 按钮样式（主要、次要、品牌）\n- 卡片样式\n- 表单输入框\n- 徽章/标签\n- 每个组件请提供示例代码片段'
+        : '### 4. Component Styles\n- Navbar styles\n- Button styles (primary, secondary, brand)\n- Card styles\n- Form inputs\n- Badges/tags\n- Provide example code snippets for each');
+    }
+    
+    if (gen.includeAccessibility !== false) {
+      analysisItems.push(preferZh
+        ? '### 5. 无障碍与对比度\n- 文本与背景对比度\n- 焦点状态样式\n- WCAG 标准符合度'
+        : '### 5. Accessibility\n- Text/background contrast\n- Focus state styles\n- WCAG compliance');
+    }
+    
+    if (gen.includeRecommendations !== false) {
+      analysisItems.push(preferZh
+        ? '### 6. 改进建议\n- 设计一致性建议\n- 最佳实践推荐\n- 潜在问题和优化方向'
+        : '### 6. Recommendations\n- Design consistency suggestions\n- Best practice recommendations\n- Potential issues and optimization');
+    }
+    
+    // 额外分析项：阴影、动效、圆角、透明度
+    analysisItems.push(preferZh
+      ? '### 7. 其他设计令牌\n- 阴影与层次\n- 动效与过渡\n- 圆角规范\n- 透明度与磨砂效果'
+      : '### 7. Other Design Tokens\n- Shadows & elevation\n- Animations & transitions\n- Border radius\n- Opacity & blur effects');
+    
+    sections.push(analysisItems.join('\n\n'));
+    sections.push('');
+    
+    // 输出格式要求
+    sections.push(preferZh 
+      ? '## 输出格式要求\n请以 Markdown 格式输出，包含：\n- 清晰的章节结构\n- 自然语言描述（不要只输出 JSON）\n- 具体的代码示例（Tailwind 类名、CSS 代码）\n- 可复用的组件代码片段'
+      : '## Output Format\nPlease output in Markdown format, including:\n- Clear section structure\n- Natural language descriptions (not just JSON)\n- Specific code examples (Tailwind classes, CSS code)\n- Reusable component code snippets');
+    sections.push('');
+    
+    // 附加页面数据
+    sections.push('---');
+    sections.push('');
+    sections.push(preferZh ? '## 页面快照数据' : '## Page Snapshot Data');
+    sections.push('');
+    sections.push(preferZh ? '### HTML（截断）' : '### HTML (truncated)');
     sections.push('```html');
     sections.push(snapshot.html.substring(0, 8000));
     sections.push('```');
-    sections.push(preferZh ? `输入快照（截断）CSS:` : `Snapshot (truncated) CSS:`);
+    sections.push('');
+    sections.push(preferZh ? '### CSS（截断）' : '### CSS (truncated)');
     sections.push('```css');
     sections.push(snapshot.css.substring(0, 12000));
     sections.push('```');
+    
     return sections.join('\n');
   }
 
   /**
-   * 构建批量分析 Prompt
+   * 构建批量分析 User Prompt
    */
   buildBatchPrompt(snapshots) {
     const lang = this.config.generate.language || 'zh-CN';
     const preferZh = lang === 'zh-CN';
+    const gen = this.config.generate || {};
     const sections = [];
 
     sections.push(preferZh
-      ? `你是一位资深的前端设计系统专家。现在有 ${snapshots.length} 个同一网站的不同页面快照，请综合分析它们的统一设计风格。`
-      : `You are a senior design system expert. Analyze ${snapshots.length} pages from the same website to extract unified design patterns.`
+      ? `## 批量分析任务\n现在有 ${snapshots.length} 个同一网站的不同页面快照，请综合分析它们的**统一设计系统**。`
+      : `## Batch Analysis Task\nAnalyze ${snapshots.length} pages from the same website to extract the **unified design system**.`
     );
+    sections.push('');
 
-    sections.push(preferZh ? `请严格按以下 JSON Schema 输出（不要包含除 JSON 以外的任何文本）：` : `Output strictly as JSON (no extra text), following this schema:`);
-    sections.push(`\n\`\`\`json`);
-    sections.push(JSON.stringify({
-      overview: { design_language: '', tech_stack: '', theme_mechanism: '', components_pattern: '' },
-      design_tokens: { fonts: {}, colors: {}, shadows: [], backgrounds: [], motions: [] },
-      color_palette: { text: {}, backgrounds: {}, borders: {} },
-      typography: { fonts: {}, headings: {}, body: {} },
-      spacing_system: { container: {}, grid: {}, atoms: {} },
-      components: { navbar: {}, button: {}, card: {}, table: {}, badge: {}, input: {} },
-      shadows_elevation: [],
-      animations_transitions: [],
-      border_radius: {},
-      opacity_transparency: {},
-      tailwind_usage: [],
-      a11y: {},
-      summary: ''
-    }, null, 2));
-    sections.push(`\n\`\`\``);
+    // 根据勾选项构建分析要求
+    sections.push(preferZh ? '## 请分析以下内容：' : '## Please analyze the following:');
+    sections.push('');
+    
+    const analysisItems = [];
+    
+    if (gen.includeColors !== false) {
+      analysisItems.push(preferZh 
+        ? '### 1. 统一配色系统\n- 跨页面一致的主色调、辅助色、中性色\n- 明暗主题的颜色映射\n- 品牌色使用规范'
+        : '### 1. Unified Color System\n- Consistent primary, secondary, neutral colors across pages\n- Light/dark theme color mapping\n- Brand color usage');
+    }
+    
+    if (gen.includeTypography !== false) {
+      analysisItems.push(preferZh
+        ? '### 2. 统一字体系统\n- 字体族（主字体、等宽字体）\n- 标题层级规范\n- 正文样式规范'
+        : '### 2. Unified Typography\n- Font families (primary, mono)\n- Heading hierarchy\n- Body styles');
+    }
+    
+    if (gen.includeLayout !== false) {
+      analysisItems.push(preferZh
+        ? '### 3. 统一布局系统\n- 容器宽度和内边距\n- 栅格系统\n- 间距规范'
+        : '### 3. Unified Layout System\n- Container width and padding\n- Grid system\n- Spacing');
+    }
+    
+    if (gen.includeComponents !== false) {
+      analysisItems.push(preferZh
+        ? '### 4. 通用组件风格\n- 导航栏、按钮、卡片、表单等\n- 每个组件提供示例代码'
+        : '### 4. Common Component Styles\n- Navbar, button, card, form, etc.\n- Provide example code for each');
+    }
+    
+    if (gen.includeAccessibility !== false) {
+      analysisItems.push(preferZh
+        ? '### 5. 无障碍建议\n- 对比度、焦点状态、WCAG 符合度'
+        : '### 5. Accessibility\n- Contrast, focus states, WCAG compliance');
+    }
+    
+    if (gen.includeRecommendations !== false) {
+      analysisItems.push(preferZh
+        ? '### 6. 设计一致性建议\n- 跨页面的设计差异\n- 统一改进建议'
+        : '### 6. Design Consistency\n- Cross-page design differences\n- Unified improvement suggestions');
+    }
+    
+    sections.push(analysisItems.join('\n\n'));
+    sections.push('');
+    
+    // 输出格式要求
+    sections.push(preferZh 
+      ? '## 输出格式\n请以 Markdown 格式输出统一的设计系统文档，包含具体的代码示例和组件代码片段。'
+      : '## Output Format\nPlease output a unified design system document in Markdown format, including specific code examples and component snippets.');
+    sections.push('');
+
+    // 附加页面数据
+    sections.push('---');
+    sections.push('');
+    sections.push(preferZh ? '## 页面快照数据' : '## Page Snapshot Data');
 
     snapshots.forEach((snapshot, i) => {
-      sections.push(`\n## ${preferZh ? '页面' : 'Page'} ${i + 1}: ${snapshot.title}`);
-      sections.push(`URL: ${snapshot.url}`);
+      const vp = snapshot.metadata?.viewport ? `${snapshot.metadata.viewport.width}x${snapshot.metadata.viewport.height}` : 'unknown';
+      sections.push('');
+      sections.push(`### ${preferZh ? '页面' : 'Page'} ${i + 1}: ${snapshot.title}`);
+      sections.push(`- URL: ${snapshot.url}`);
+      sections.push(`- ${preferZh ? '视口' : 'Viewport'}: ${vp}`);
+      sections.push('');
+      sections.push('#### HTML');
       sections.push('```html');
       sections.push(snapshot.html.substring(0, 5000));
       sections.push('```');
+      sections.push('');
+      sections.push('#### CSS');
       sections.push('```css');
       sections.push(snapshot.css.substring(0, 8000));
       sections.push('```');
@@ -202,13 +438,14 @@ class AIAnalyzer {
   /**
    * 调用 AI API
    */
-  async callAI(prompt) {
+  async callAI(systemPrompt, userPrompt) {
     const { apiKey, baseUrl, modelId, temperature, maxTokens } = this.config.ai;
     
     console.log('[AIAnalyzer] 准备调用 AI API');
     console.log('[AIAnalyzer] baseUrl:', baseUrl);
     console.log('[AIAnalyzer] modelId:', modelId);
     console.log('[AIAnalyzer] apiKey 存在:', !!apiKey);
+    console.log('[AIAnalyzer] 使用模板:', this.config.template?.name || '默认');
     
     if (!apiKey || !baseUrl || !modelId) {
       const missing = [];
@@ -234,16 +471,15 @@ class AIAnalyzer {
           messages: [
             {
               role: 'system',
-              content: '你是一位专业的前端设计系统分析专家。严格输出 JSON（不可包含除 JSON 外任何文本），遵循给定 schema。'
+              content: systemPrompt
             },
             {
               role: 'user',
-              content: prompt
+              content: userPrompt
             }
           ],
-          max_tokens: maxTokens || 4000,
-          temperature: (typeof temperature === 'number' ? temperature : 0.2)
-          // 某些提供商可能支持：response_format: { type: 'json_object' }
+          max_tokens: maxTokens || 8000,
+          temperature: (typeof temperature === 'number' ? temperature : 0.3)
         })
       });
       
@@ -267,310 +503,6 @@ class AIAnalyzer {
     }
   }
   
-  /**
-   * 解析 AI 响应
-   */
-  parseResponse(response) {
-    const fenced = response.match(/```json\s*([\s\S]*?)```/i);
-    if (fenced) {
-      try { return JSON.parse(fenced[1]); } catch {}
-    }
-    try {
-      const trimmed = response.trim();
-      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-        return JSON.parse(trimmed);
-      }
-    } catch {}
-    const brace = response.match(/\{[\s\S]*\}/);
-    if (brace) {
-      try { return JSON.parse(brace[0]); } catch {}
-    }
-    return { summary: response, raw: true };
-  }
-  
-  /**
-   * 生成批量分析 Markdown 报告
-   */
-  generateBatchMarkdown(snapshots, analysis) {
-    const lines = [];
-    lines.push(`# 批量设计风格分析报告`);
-    lines.push('');
-    lines.push(`> **分析时间**: ${new Date().toLocaleString('zh-CN')}`);
-    lines.push(`> **页面数量**: ${snapshots.length}`);
-    lines.push('');
-    lines.push('## 分析页面列表');
-    lines.push('');
-    snapshots.forEach((s, i) => {
-      lines.push(`${i + 1}. [${s.title}](${s.url})`);
-    });
-    lines.push('');
-    lines.push('---');
-    lines.push('');
-
-    const pushKV = (obj) => {
-      Object.entries(obj || {}).forEach(([k,v]) => {
-        if (v == null) return;
-        if (typeof v === 'object') {
-          lines.push(`- ${k}:`);
-          lines.push('');
-          lines.push('```json');
-          lines.push(JSON.stringify(v, null, 2));
-          lines.push('```');
-        } else {
-          lines.push(`- ${k}: ${v}`);
-        }
-      });
-    };
-
-    if (analysis.overview) {
-      lines.push(`## 概览`);
-      pushKV(analysis.overview);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.design_tokens) {
-      lines.push(`## 设计令牌`);
-      pushKV(analysis.design_tokens);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.color_palette) {
-      lines.push(`## 配色系统`);
-      pushKV(analysis.color_palette);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.typography) {
-      lines.push(`## 排版`);
-      pushKV(analysis.typography);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.spacing_system) {
-      lines.push(`## 间距系统`);
-      pushKV(analysis.spacing_system);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.components) {
-      lines.push(`## 组件风格`);
-      Object.entries(analysis.components).forEach(([name, style]) => {
-        lines.push(`### ${name}`);
-        lines.push('');
-        lines.push('```json');
-        lines.push(JSON.stringify(style, null, 2));
-        lines.push('```');
-        lines.push('');
-      });
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.shadows_elevation) {
-      lines.push(`## 阴影与层次`);
-      lines.push('```json');
-      lines.push(JSON.stringify(analysis.shadows_elevation, null, 2));
-      lines.push('```');
-      lines.push('');
-    }
-
-    if (analysis.animations_transitions) {
-      lines.push(`## 动效与过渡`);
-      lines.push('```json');
-      lines.push(JSON.stringify(analysis.animations_transitions, null, 2));
-      lines.push('```');
-      lines.push('');
-    }
-
-    if (analysis.border_radius) {
-      lines.push(`## 圆角`);
-      pushKV(analysis.border_radius);
-      lines.push('');
-    }
-
-    if (analysis.opacity_transparency) {
-      lines.push(`## 透明度与磨砂`);
-      pushKV(analysis.opacity_transparency);
-      lines.push('');
-    }
-
-    if (analysis.tailwind_usage) {
-      lines.push(`## 常用 Tailwind 使用模式`);
-      if (Array.isArray(analysis.tailwind_usage)) {
-        analysis.tailwind_usage.forEach(i => lines.push(`- ${i}`));
-      }
-      lines.push('');
-    }
-
-    if (analysis.a11y) {
-      lines.push(`## 无障碍与对比度`);
-      pushKV(analysis.a11y);
-      lines.push('');
-    }
-
-    if (analysis.summary) {
-      lines.push('---');
-      lines.push('');
-      lines.push(analysis.summary);
-      lines.push('');
-    }
-
-    lines.push('---');
-    lines.push('');
-    lines.push(`*本报告由 Frontend Style Generator AI 自动生成*`);
-    lines.push(`*生成时间: ${new Date().toLocaleString('zh-CN')}*`);
-    return lines.join('\n');
-  }
-
-  /**
-   * 生成 Markdown 报告
-   */
-  generateMarkdown(snapshot, analysis) {
-    const lines = [];
-    lines.push(`# ${snapshot.title} - 设计风格分析报告`);
-    lines.push('');
-    lines.push(`> **分析时间**: ${new Date().toLocaleString('zh-CN')}`);
-    lines.push(`> **页面 URL**: ${snapshot.url}`);
-    lines.push(`> **采集时间**: ${new Date(snapshot.extractedAt).toLocaleString('zh-CN')}`);
-    lines.push(`> **视口尺寸**: ${snapshot.metadata.viewport.width} x ${snapshot.metadata.viewport.height}`);
-    lines.push('');
-    lines.push('---');
-    lines.push('');
-
-    const pushKV = (obj) => {
-      Object.entries(obj || {}).forEach(([k,v]) => {
-        if (v == null) return;
-        if (typeof v === 'object') {
-          lines.push(`- ${k}:`);
-          lines.push('');
-          lines.push('```json');
-          lines.push(JSON.stringify(v, null, 2));
-          lines.push('```');
-        } else {
-          lines.push(`- ${k}: ${v}`);
-        }
-      });
-    };
-
-    if (analysis.overview) {
-      lines.push(`## 概览`);
-      pushKV(analysis.overview);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.design_tokens) {
-      lines.push(`## 设计令牌`);
-      pushKV(analysis.design_tokens);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.color_palette) {
-      lines.push(`## 配色系统`);
-      pushKV(analysis.color_palette);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.typography) {
-      lines.push(`## 排版`);
-      pushKV(analysis.typography);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.spacing_system) {
-      lines.push(`## 间距系统`);
-      pushKV(analysis.spacing_system);
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.components) {
-      lines.push(`## 组件风格`);
-      Object.entries(analysis.components).forEach(([name, style]) => {
-        lines.push(`### ${name}`);
-        lines.push('');
-        lines.push('```json');
-        lines.push(JSON.stringify(style, null, 2));
-        lines.push('```');
-        lines.push('');
-      });
-      lines.push('---');
-      lines.push('');
-    }
-
-    if (analysis.shadows_elevation) {
-      lines.push(`## 阴影与层次`);
-      lines.push('```json');
-      lines.push(JSON.stringify(analysis.shadows_elevation, null, 2));
-      lines.push('```');
-      lines.push('');
-    }
-
-    if (analysis.animations_transitions) {
-      lines.push(`## 动效与过渡`);
-      lines.push('```json');
-      lines.push(JSON.stringify(analysis.animations_transitions, null, 2));
-      lines.push('```');
-      lines.push('');
-    }
-
-    if (analysis.border_radius) {
-      lines.push(`## 圆角`);
-      pushKV(analysis.border_radius);
-      lines.push('');
-    }
-
-    if (analysis.opacity_transparency) {
-      lines.push(`## 透明度与磨砂`);
-      pushKV(analysis.opacity_transparency);
-      lines.push('');
-    }
-
-    if (analysis.tailwind_usage) {
-      lines.push(`## 常用 Tailwind 使用模式`);
-      if (Array.isArray(analysis.tailwind_usage)) {
-        analysis.tailwind_usage.forEach(i => lines.push(`- ${i}`));
-      }
-      lines.push('');
-    }
-
-    if (analysis.a11y) {
-      lines.push(`## 无障碍与对比度`);
-      pushKV(analysis.a11y);
-      lines.push('');
-    }
-
-    if (analysis.summary) {
-      lines.push('---');
-      lines.push('');
-      lines.push(analysis.summary);
-      lines.push('');
-    }
-
-    lines.push('---');
-    lines.push('');
-    lines.push(`*本报告由 Frontend Style Generator AI 自动生成*`);
-    lines.push(`*生成时间: ${new Date().toLocaleString('zh-CN')}*`);
-    return lines.join('\n');
-  }
 }
 
 // 导出
