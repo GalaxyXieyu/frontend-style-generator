@@ -1,0 +1,166 @@
+{
+  "name": "design-learn",
+  "displayName": "Design-Learn",
+  "description": "在 VSCode 中提取网页设计风格，AI 智能分析，保存到项目目录",
+  "version": "1.0.0",
+  "publisher": "design-learn",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "design",
+    "web",
+    "extraction",
+    "ai",
+    "analysis"
+  ],
+  "activationEvents": [
+    "onView:designLearnSidebar"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "designLearn",
+          "title": "Design-Learn",
+          "icon": "media/icons/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "designLearn": [
+        {
+          "type": "webview",
+          "id": "designLearnSidebar",
+          "name": "Design-Learn"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "design-learn.refreshSnapshots",
+          "when": "view == designLearnSidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "design-learn.openSettings",
+          "when": "view == designLearnSidebar",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "design-learn.openSettings",
+        "title": "打开设置面板",
+        "category": "Design-Learn"
+      },
+      {
+        "command": "design-learn.extract",
+        "title": "提取网页设计风格",
+        "category": "Design-Learn",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "design-learn.extractWithAI",
+        "title": "提取并分析网页设计风格（AI）",
+        "category": "Design-Learn"
+      },
+      {
+        "command": "design-learn.configure",
+        "title": "配置 AI 模型",
+        "category": "Design-Learn"
+      },
+      {
+        "command": "design-learn.refreshSnapshots",
+        "title": "刷新快照列表",
+        "category": "Design-Learn",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "design-learn.openSnapshotsFolder",
+        "title": "打开 .designlearn/snapshots",
+        "category": "Design-Learn"
+      },
+      {
+        "command": "design-learn.openSnapshotFolder",
+        "title": "打开快照文件夹",
+        "category": "Design-Learn",
+        "icon": "$(folder-opened)"
+      }
+    ],
+    "configuration": {
+      "title": "Design-Learn",
+      "properties": {
+        "designLearn.savePath": {
+          "type": "string",
+          "default": "${workspaceFolder}/.designlearn",
+          "description": "提取文件的保存路径（相对于工作区根目录），默认 .designlearn"
+        },
+        "designLearn.aiModels": {
+          "type": "array",
+          "default": [],
+          "description": "AI 模型配置列表"
+        },
+        "designLearn.promptTemplates": {
+          "type": "array",
+          "default": [],
+          "description": "提示词模板列表"
+        },
+        "designLearn.extraction": {
+          "type": "object",
+          "default": {
+            "inlineCSS": true,
+            "includeImages": true,
+            "includeFonts": true
+          },
+          "description": "网页提取配置选项"
+        },
+        "designLearn.analysis": {
+          "type": "object",
+          "default": {
+            "colors": true,
+            "typography": true,
+            "layout": true,
+            "components": true,
+            "accessibility": true
+          },
+          "description": "分析内容配置选项"
+        },
+        "designLearn.reportLanguage": {
+          "type": "string",
+          "default": "zh",
+          "enum": ["zh", "en", "es", "fr", "ja"],
+          "description": "分析报告语言"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GalaxyXieyu/Design-Learn.git"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  }
+}
+

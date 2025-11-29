@@ -1,0 +1,202 @@
+/* 响应式设计 - 媒体查询 */
+
+/* ==================== 平板尺寸 (1024px 以下) ==================== */
+@media (max-width: 1024px) {
+  .main-content {
+    padding: 24px;
+  }
+  
+  .card {
+    padding: 24px;
+  }
+  
+  .options-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .models-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-row {
+    flex-direction: column;
+  }
+  
+  .history-item {
+    padding: 16px;
+  }
+  
+  .history-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .history-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .action-btn {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  
+  .history-meta {
+    gap: 8px;
+  }
+  
+  .history-meta > span {
+    font-size: 11px;
+  }
+
+  .data-actions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ==================== 手机尺寸 (768px 以下) ==================== */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 200px;
+  }
+  
+  :root {
+    --sidebar-width: 200px;
+  }
+  
+  .main-content {
+    padding: 20px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .page-header h2 {
+    font-size: 24px;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .history-filters {
+    flex-direction: column;
+  }
+  
+  .history-item {
+    padding: 12px;
+  }
+  
+  .history-title {
+    font-size: 14px;
+  }
+  
+  .history-url {
+    font-size: 12px;
+  }
+  
+  .action-btn {
+    font-size: 11px;
+    padding: 6px 10px;
+    min-width: 60px;
+  }
+  
+  .modal-content {
+    width: 95%;
+    max-height: 95vh;
+  }
+
+  .template-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .template-actions {
+    width: 100%;
+  }
+  
+  .btn-sm {
+    flex: 1;
+  }
+  
+  .prompt-edit-area {
+    min-height: 300px;
+  }
+}
+
+/* ==================== 小手机尺寸 (640px 以下) ==================== */
+@media (max-width: 640px) {
+  .data-actions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==================== 超小手机尺寸 (480px 以下) ==================== */
+@media (max-width: 480px) {
+  .sidebar {
+    width: 60px; /* 超小屏幕只显示图标 */
+  }
+  
+  :root {
+    --sidebar-width: 60px;
+  }
+  
+  .sidebar-header h1,
+  .nav-item span,
+  .version {
+    display: none; /* 隐藏文字 */
+  }
+  
+  .main-content {
+    padding: 12px;
+  }
+  
+  .card {
+    padding: 16px;
+  }
+  
+  .page-header h2 {
+    font-size: 18px;
+  }
+  
+  .history-item {
+    padding: 12px;
+  }
+  
+  .history-actions {
+    flex-direction: column;
+  }
+  
+  .action-btn {
+    width: 100%;
+    font-size: 12px;
+  }
+  
+  .model-card-actions {
+    flex-direction: column;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==================== 大屏幕 (1440px 以上) ==================== */
+@media (min-width: 1440px) {
+  .main-content {
+    padding: 60px 80px;
+  }
+  
+  .options-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+  
+  .models-grid {
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  }
+}

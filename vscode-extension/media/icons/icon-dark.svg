@@ -1,0 +1,13 @@
+<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark theme Activity Bar icon -->
+  <rect width="128" height="128" rx="24" fill="#1e1e1e"/>
+  <defs>
+    <linearGradient id="gradientDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#82b8e8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6b9dd6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Fluid wave design -->
+  <path d="M 35 55 Q 40 45, 50 48 Q 60 50, 65 40 Q 70 30, 80 35 Q 85 38, 90 55 Q 92 70, 85 80 Q 80 88, 70 85 Q 60 82, 55 92 Q 50 100, 40 95 Q 30 90, 25 75 Q 20 60, 35 55 Z" fill="url(#gradientDark)" opacity="0.95"/>
+  <path d="M 30 70 Q 35 60, 45 63 Q 55 65, 60 55 Q 68 42, 75 50 Q 82 58, 88 70 Q 90 80, 82 88 Q 75 93, 65 90 Q 55 87, 50 95 Q 42 102, 32 98 Q 22 94, 20 80 Q 18 70, 30 70 Z" fill="url(#gradientDark)" opacity="0.75"/>
+</svg>
