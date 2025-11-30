@@ -5,6 +5,29 @@
 class AIAnalyzer {
   constructor() {
     this.config = null;
+    // 默认的最大输入 token 限制（如果模型未配置）
+    this.DEFAULT_MAX_INPUT_TOKENS = 128000;
+    // 留给输出的安全边界（token）
+    this.OUTPUT_TOKEN_RESERVE = 8000;
+    // 留给 system prompt 的安全边界（token）
+    this.SYSTEM_PROMPT_RESERVE = 3000;
+  }
+
+  /**
+   * 估算文本的 token 数量
+   * 使用简化的估算方法：英文约 4 字符/token，中文约 1.5 字符/token
+   */
+  estimateTokens(text) {
+    if (!text) return 0;
+    
+    // 统计中文字符数
+    const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+    // 非中文字符数
+    const otherChars = text.length - chineseChars;
+    
+    // 中文约 1.5 字符/token，英文/代码约 4 字符/token
+    const tokens = Math.ceil(chineseChars / 1.5) + Math.ceil(otherChars / 4);
+    return tokens;
   }
   
   /**
@@ -100,6 +123,7 @@ class AIAnalyzer {
 
   /**
    * 批量分析多个快照
+   * 会自动计算 token 并调整页数以避免超限
    */
   async analyzeBatch(snapshots) {
     await this.loadConfig();
@@ -109,23 +133,123 @@ class AIAnalyzer {
     }
 
     const systemPrompt = this.getSystemPrompt();
-    const userPrompt = this.buildBatchPrompt(snapshots);
+    
+    // 获取模型的最大输入 token 限制
+    const maxInputTokens = this.config.ai.maxInputTokens || this.DEFAULT_MAX_INPUT_TOKENS;
+    
+    // 计算可用于页面数据的 token 预算
+    const systemPromptTokens = this.estimateTokens(systemPrompt);
+    const availableTokens = maxInputTokens - this.OUTPUT_TOKEN_RESERVE - this.SYSTEM_PROMPT_RESERVE - systemPromptTokens;
+    
+    console.log(`[AIAnalyzer] 模型最大输入: ${maxInputTokens}, 可用于页面数据: ${availableTokens}`);
+    
+    // 动态计算每个页面的分配和实际使用的页面数
+    const { selectedSnapshots, htmlLimit, cssLimit } = this.calculateBatchLimits(snapshots, availableTokens);
+    
+    if (selectedSnapshots.length < snapshots.length) {
+      console.log(`[AIAnalyzer] 由于 token 限制，从 ${snapshots.length} 个页面减少到 ${selectedSnapshots.length} 个`);
+    }
+    console.log(`[AIAnalyzer] 每页 HTML 截断: ${htmlLimit} 字符, CSS 截断: ${cssLimit} 字符`);
+    
+    const userPrompt = this.buildBatchPrompt(selectedSnapshots, htmlLimit, cssLimit);
+    
+    // 验证最终 token 数
+    const totalTokens = systemPromptTokens + this.estimateTokens(userPrompt);
+    console.log(`[AIAnalyzer] 估算总输入 token: ${totalTokens}`);
+    
     const response = await this.callAI(systemPrompt, userPrompt);
     
     // 直接使用 AI 返回的 Markdown
-    const markdown = this.wrapBatchMarkdownReport(snapshots, response);
-    return { analysis: { raw: true, content: response }, markdown, format: 'markdown' };
+    const markdown = this.wrapBatchMarkdownReport(selectedSnapshots, response, snapshots.length !== selectedSnapshots.length ? snapshots.length : null);
+    return { 
+      analysis: { raw: true, content: response }, 
+      markdown, 
+      format: 'markdown',
+      stats: {
+        originalCount: snapshots.length,
+        analyzedCount: selectedSnapshots.length,
+        htmlLimit,
+        cssLimit,
+        estimatedTokens: totalTokens
+      }
+    };
+  }
+
+  /**
+   * 计算批量分析的限制参数
+   * 根据可用 token 动态调整页面数量和每页的内容截断长度
+   */
+  calculateBatchLimits(snapshots, availableTokens) {
+    // 每个页面的固定开销（标题、URL、标记等）约 200 token
+    const FIXED_OVERHEAD_PER_PAGE = 200;
+    // 批量分析的固定开销（分析要求、输出格式等）约 1000 token
+    const BATCH_FIXED_OVERHEAD = 1000;
+    
+    // 默认的 HTML/CSS 截断长度
+    const DEFAULT_HTML_LIMIT = 5000;
+    const DEFAULT_CSS_LIMIT = 8000;
+    // 最小截断长度（保证有意义的内容）
+    const MIN_HTML_LIMIT = 1500;
+    const MIN_CSS_LIMIT = 2000;
+    
+    let selectedSnapshots = [...snapshots];
+    let htmlLimit = DEFAULT_HTML_LIMIT;
+    let cssLimit = DEFAULT_CSS_LIMIT;
+    
+    // 计算当前配置下的估算 token
+    const estimateConfigTokens = (count, html, css) => {
+      const perPageTokens = FIXED_OVERHEAD_PER_PAGE + this.estimateTokens('x'.repeat(html)) + this.estimateTokens('x'.repeat(css));
+      return BATCH_FIXED_OVERHEAD + count * perPageTokens;
+    };
+    
+    // 策略 1: 尝试使用默认截断长度
+    let estimatedTokens = estimateConfigTokens(selectedSnapshots.length, htmlLimit, cssLimit);
+    
+    if (estimatedTokens <= availableTokens) {
+      // 默认配置已经满足，直接返回
+      return { selectedSnapshots, htmlLimit, cssLimit };
+    }
+    
+    // 策略 2: 先尝试减少每页的内容长度
+    while (estimatedTokens > availableTokens && (htmlLimit > MIN_HTML_LIMIT || cssLimit > MIN_CSS_LIMIT)) {
+      // 按比例减少
+      htmlLimit = Math.max(MIN_HTML_LIMIT, Math.floor(htmlLimit * 0.8));
+      cssLimit = Math.max(MIN_CSS_LIMIT, Math.floor(cssLimit * 0.8));
+      estimatedTokens = estimateConfigTokens(selectedSnapshots.length, htmlLimit, cssLimit);
+    }
+    
+    // 策略 3: 如果还是超限，减少页面数量
+    while (estimatedTokens > availableTokens && selectedSnapshots.length > 1) {
+      selectedSnapshots = selectedSnapshots.slice(0, selectedSnapshots.length - 1);
+      estimatedTokens = estimateConfigTokens(selectedSnapshots.length, htmlLimit, cssLimit);
+    }
+    
+    // 策略 4: 如果只剩一个页面还是超限，继续减少内容长度
+    while (estimatedTokens > availableTokens && (htmlLimit > 500 || cssLimit > 500)) {
+      htmlLimit = Math.max(500, Math.floor(htmlLimit * 0.7));
+      cssLimit = Math.max(500, Math.floor(cssLimit * 0.7));
+      estimatedTokens = estimateConfigTokens(selectedSnapshots.length, htmlLimit, cssLimit);
+    }
+    
+    return { selectedSnapshots, htmlLimit, cssLimit };
   }
 
   /**
    * 包装批量分析 Markdown 报告
+   * @param {Array} snapshots - 实际分析的快照
+   * @param {string} content - AI 返回的内容
+   * @param {number|null} originalCount - 原始页面数量（如果有减少）
    */
-  wrapBatchMarkdownReport(snapshots, content) {
+  wrapBatchMarkdownReport(snapshots, content, originalCount = null) {
     const lines = [];
     lines.push(`# 批量设计风格分析报告`);
     lines.push('');
     lines.push(`> **分析时间**: ${new Date().toLocaleString('zh-CN')}`);
-    lines.push(`> **页面数量**: ${snapshots.length}`);
+    if (originalCount && originalCount > snapshots.length) {
+      lines.push(`> **页面数量**: ${snapshots.length}（原始 ${originalCount} 个，因 token 限制自动调整）`);
+    } else {
+      lines.push(`> **页面数量**: ${snapshots.length}`);
+    }
     lines.push('');
     lines.push('## 分析页面列表');
     lines.push('');
@@ -345,8 +469,11 @@ Ensure the output is comprehensive, professional, and directly usable as a team 
 
   /**
    * 构建批量分析 User Prompt
+   * @param {Array} snapshots - 快照数组
+   * @param {number} htmlLimit - 每页 HTML 截断长度
+   * @param {number} cssLimit - 每页 CSS 截断长度
    */
-  buildBatchPrompt(snapshots) {
+  buildBatchPrompt(snapshots, htmlLimit = 5000, cssLimit = 8000) {
     const lang = this.config.generate.language || 'zh-CN';
     const preferZh = lang === 'zh-CN';
     const gen = this.config.generate || {};
@@ -423,12 +550,12 @@ Ensure the output is comprehensive, professional, and directly usable as a team 
       sections.push('');
       sections.push('#### HTML');
       sections.push('```html');
-      sections.push(snapshot.html.substring(0, 5000));
+      sections.push(snapshot.html.substring(0, htmlLimit));
       sections.push('```');
       sections.push('');
       sections.push('#### CSS');
       sections.push('```css');
-      sections.push(snapshot.css.substring(0, 8000));
+      sections.push(snapshot.css.substring(0, cssLimit));
       sections.push('```');
     });
 

@@ -133,6 +133,10 @@ export class ModelManager {
             <span class="label">Max Tokens</span>
             <span class="value">${model.maxTokens}</span>
           </div>
+          <div class="model-card-info-item">
+            <span class="label">输入上限</span>
+            <span class="value">${model.maxInputTokens ? (model.maxInputTokens / 1000).toFixed(0) + 'K' : '128K'}</span>
+          </div>
         </div>
         
         <div class="model-card-footer">
@@ -215,6 +219,7 @@ export class ModelManager {
       document.getElementById('modalTemperature').value = model.temperature;
       document.getElementById('modalTemperatureValue').textContent = model.temperature;
       document.getElementById('modalMaxTokens').value = model.maxTokens;
+      document.getElementById('modalMaxInputTokens').value = model.maxInputTokens || 128000;
     } else {
       document.getElementById('modalModelName').value = '';
       document.getElementById('modalApiKey').value = '';
@@ -223,6 +228,7 @@ export class ModelManager {
       document.getElementById('modalTemperature').value = 0.7;
       document.getElementById('modalTemperatureValue').textContent = '0.7';
       document.getElementById('modalMaxTokens').value = 4000;
+      document.getElementById('modalMaxInputTokens').value = 128000;
     }
 
     modal.style.display = 'flex';
@@ -246,6 +252,7 @@ export class ModelManager {
     const modelId = document.getElementById('modalModelId').value.trim();
     const temperature = parseFloat(document.getElementById('modalTemperature').value);
     const maxTokens = parseInt(document.getElementById('modalMaxTokens').value);
+    const maxInputTokens = parseInt(document.getElementById('modalMaxInputTokens').value) || 128000;
 
     // 验证
     if (!name || !apiKey || !baseUrl || !modelId) {
@@ -261,6 +268,7 @@ export class ModelManager {
       modelId,
       temperature,
       maxTokens,
+      maxInputTokens,
       isDefault: this.models.length === 0 // 第一个模型自动设为默认
     };
 

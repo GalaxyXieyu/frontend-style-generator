@@ -213,13 +213,7 @@ class PopupController {
       });
     }
     
-    // 清除已完成任务
-    const clearCompletedBtn = document.getElementById('clearCompletedBtn');
-    if (clearCompletedBtn) {
-      clearCompletedBtn.addEventListener('click', () => {
-        this.queueController.clearSelected();
-      });
-    }
+    // 清除已完成任务按钮事件已移至 QueueController.js 中动态绑定
     
     // 全选/取消全选
     const selectAllBtn = document.getElementById('selectAllBtn');

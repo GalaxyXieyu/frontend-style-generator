@@ -59,6 +59,36 @@ class TaskManager {
     Object.entries(groups).forEach(([domain, domainTasks]) => {
       const group = document.createElement('div');
       const header = document.createElement('div');
+      
+      // 分组全选 Checkbox
+      const groupCheckbox = document.createElement('input');
+      groupCheckbox.type = 'checkbox';
+      groupCheckbox.className = 'group-checkbox';
+      groupCheckbox.style.cssText = 'margin-left: 8px; width: 16px; height: 16px; cursor: pointer;';
+      
+      // 检查该组是否全选
+      const allSelected = domainTasks.every(t => this.controller.selectedTasks.has(t.id));
+      const someSelected = domainTasks.some(t => this.controller.selectedTasks.has(t.id));
+      groupCheckbox.checked = allSelected;
+      groupCheckbox.indeterminate = someSelected && !allSelected;
+      
+      // 绑定分组全选事件
+      groupCheckbox.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isChecked = e.target.checked;
+        domainTasks.forEach(task => {
+          if (isChecked) {
+            this.controller.selectedTasks.add(task.id);
+          } else {
+            this.controller.selectedTasks.delete(task.id);
+          }
+        });
+        // 重新渲染列表以更新选中状态
+        this.displayTasks(this.controller.tasks);
+        this.controller.queueController.updateClearButton();
+        this.controller.queueController.updateSelectAllButton();
+      });
+
       const arrow = document.createElement('span');
       const count = document.createElement('span');
       const body = document.createElement('div');
@@ -67,7 +97,9 @@ class TaskManager {
       header.style.cssText = 'padding:10px 8px; border-radius:8px; background:#f8fafc; display:flex; align-items:center; gap:8px; cursor:pointer;';
       arrow.textContent = '▶';
       arrow.style.cssText = 'display:inline-block; transition:transform .2s; color: var(--text-secondary);';
+      
       header.appendChild(arrow);
+      header.appendChild(groupCheckbox); // 添加 Checkbox
       const title = document.createElement('span');
       title.textContent = domain;
       title.style.cssText = 'font-weight:600; font-size:12px; color: var(--text-secondary); flex: 1;';
@@ -291,6 +323,46 @@ class TaskManager {
           </svg>
           <span>${statusTexts[task.status]}</span>
           <span>${task.progress}%</span>
+          ${task.status === 'failed' ? `
+          <button class="task-retry-btn" data-task-id="${task.id}" title="重试任务" style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: 4px;
+          ">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M21 3v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M21 3l-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          ` : ''}
+          <button class="task-delete-btn" data-task-id="${task.id}" title="删除任务" style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: 4px;
+          ">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
         </div>
       </div>
       ${task.progress > 0 && task.progress < 100 ? `
@@ -312,6 +384,41 @@ class TaskManager {
         }
         this.controller.queueController.updateClearButton();
         this.controller.queueController.updateSelectAllButton();
+      });
+    }
+    
+    
+    // 绑定重试按钮事件
+    const retryBtn = item.querySelector('.task-retry-btn');
+    if (retryBtn) {
+      retryBtn.addEventListener('mouseenter', () => {
+        retryBtn.style.background = 'rgba(79, 172, 254, 0.1)';
+        retryBtn.style.color = 'var(--accent-color)';
+      });
+      retryBtn.addEventListener('mouseleave', () => {
+        retryBtn.style.background = 'transparent';
+        retryBtn.style.color = 'var(--text-tertiary)';
+      });
+      retryBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.retryTask(task.id);
+      });
+    }
+
+    // 绑定删除按钮事件
+    const deleteBtn = item.querySelector('.task-delete-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('mouseenter', () => {
+        deleteBtn.style.background = 'rgba(239, 68, 68, 0.1)';
+        deleteBtn.style.color = '#ef4444';
+      });
+      deleteBtn.addEventListener('mouseleave', () => {
+        deleteBtn.style.background = 'transparent';
+        deleteBtn.style.color = 'var(--text-tertiary)';
+      });
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteTask(task.id);
       });
     }
     
@@ -431,6 +538,51 @@ class TaskManager {
       }
     } catch (error) {
       this.controller.showNotification('error', '添加任务失败：' + error.message);
+    }
+  }
+
+  /**
+   * 重试单个任务
+   */
+  async retryTask(taskId) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'RETRY_TASK',
+        taskId
+      });
+      
+      if (response.success) {
+        await this.loadTasks();
+        this.controller.showNotification('success', '任务已开始重试');
+      } else {
+        this.controller.showNotification('error', response.error || '重试失败');
+      }
+    } catch (error) {
+      this.controller.showNotification('error', '重试失败：' + error.message);
+    }
+  }
+
+  /**
+   * 删除单个任务
+   */
+  async deleteTask(taskId) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'DELETE_TASK',
+        taskId
+      });
+      
+      if (response.success) {
+        // 从选中列表中移除
+        this.controller.selectedTasks.delete(taskId);
+        // 刷新任务列表
+        await this.loadTasks();
+        this.controller.showNotification('success', '任务已删除');
+      } else {
+        this.controller.showNotification('error', response.error || '删除失败');
+      }
+    } catch (error) {
+      this.controller.showNotification('error', '删除失败：' + error.message);
     }
   }
 

@@ -46,12 +46,81 @@ class TaskManager {
           task.status = 'failed';
           task.error = '后台重启导致任务中断';
           task.completedAt = new Date().toISOString();
+          
+          if (task.options?.batchId) {
+            affectedBatches.add(task.options.batchId);
+          }
         }
       });
     }
     this.paused = stored.queuePaused || false;
+    
+    // 记录受影响的批次
+    const affectedBatches = new Set();
+    
+    if (stored.tasks) {
+      this.tasks = new Map(Object.entries(stored.tasks));
+      // 仅将 pending 任务加入队列，避免因后台重启导致 running 任务重复执行
+      this.queue = Array.from(this.tasks.keys()).filter(id => {
+        const task = this.tasks.get(id);
+        return task.status === 'pending';
+      });
+      // 将运行中任务标记为失败，防止自动重跑
+      this.tasks.forEach(task => {
+        if (task.status === 'running' || task.status === 'analyzing') {
+          task.status = 'failed';
+          task.error = '后台重启导致任务中断';
+          task.completedAt = new Date().toISOString();
+          
+          if (task.options?.batchId) {
+            affectedBatches.add(task.options.batchId);
+          }
+        }
+      });
+    }
+
     await this.saveTasks();
+    
+    // 检查受影响的批次
+    for (const batchId of affectedBatches) {
+      await this.checkBatchCompletion(batchId);
+    }
+
     if (this.queue.length > 0 && !this.paused) {
+      this.processQueue();
+    }
+  }
+  
+  /**
+   * 重试任务
+   */
+  async retryTask(taskId) {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error('任务不存在');
+    }
+    
+    if (task.status !== 'failed' && task.status !== 'completed') {
+      throw new Error('只能重试失败或已完成的任务');
+    }
+    
+    // 重置任务状态
+    task.status = 'pending';
+    task.progress = 0;
+    task.error = null;
+    task.result = null;
+    task.startedAt = null;
+    task.completedAt = null;
+    task.stage = '等待重试...';
+    
+    // 加入队列
+    this.queue.push(taskId);
+    
+    await this.saveTasks();
+    this.notifyUpdate();
+    
+    // 如果队列未暂停且未运行，开始处理
+    if (!this.running && !this.paused) {
       this.processQueue();
     }
   }
@@ -838,6 +907,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   if (request.type === 'DELETE_TASK') {
     taskManager.deleteTask(request.taskId)
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.type === 'RETRY_TASK') {
+    taskManager.retryTask(request.taskId)
       .then(() => sendResponse({ success: true }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;

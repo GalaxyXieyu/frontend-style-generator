@@ -59,10 +59,16 @@
         </div>
         
         <div class="form-group" style="flex: 1;">
-          <label>Max Tokens</label>
-          <input type="number" id="modalMaxTokens" class="input" value="4000" min="1000" max="16000">
-          <small>控制生成内容的长度</small>
+          <label>Max Tokens（输出）</label>
+          <input type="number" id="modalMaxTokens" class="input" value="4000" min="1000" max="32000">
+          <small>控制生成内容的最大长度</small>
         </div>
+      </div>
+      
+      <div class="form-group">
+        <label>Max Input Tokens（输入上限）</label>
+        <input type="number" id="modalMaxInputTokens" class="input" value="128000" min="4000" max="200000">
+        <small>模型的最大输入 token 限制，批量分析时会自动调整页数以避免超限（常见值：GPT-4 Turbo: 128000，Claude 3: 200000，GPT-3.5: 16000）</small>
       </div>
     </div>
     

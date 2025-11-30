@@ -66,6 +66,45 @@ class QueueController {
   }
   
   /**
+   * 重试选中的任务
+   */
+  async retrySelected() {
+    if (this.controller.selectedTasks.size === 0) {
+      this.controller.showNotification('error', '请先选择要重试的任务');
+      return;
+    }
+    
+    const selectedTasks = Array.from(this.controller.selectedTasks).map(id => 
+      this.controller.tasks.find(t => t.id === id)
+    ).filter(Boolean);
+    
+    const failedTasks = selectedTasks.filter(t => t.status === 'failed');
+    
+    if (failedTasks.length === 0) {
+      this.controller.showNotification('error', '选中的任务中没有失败的任务');
+      return;
+    }
+    
+    try {
+      // 批量重试失败的任务
+      const retryPromises = failedTasks.map(task =>
+        chrome.runtime.sendMessage({
+          type: 'RETRY_TASK',
+          taskId: task.id
+        })
+      );
+      
+      await Promise.all(retryPromises);
+      
+      this.controller.selectedTasks.clear();
+      await this.controller.taskManager.loadTasks();
+      this.controller.showNotification('success', `已重试 ${failedTasks.length} 个任务`);
+    } catch (error) {
+      this.controller.showNotification('error', '重试失败：' + error.message);
+    }
+  }
+
+  /**
    * 全选/取消全选
    */
   toggleSelectAll() {
@@ -86,26 +125,65 @@ class QueueController {
    */
   updateClearButton() {
     const clearBtn = document.getElementById('clearCompletedBtn');
-    if (clearBtn) {
-      if (this.controller.selectedTasks.size > 0) {
+    if (!clearBtn) return;
+
+    if (this.controller.selectedTasks.size > 0) {
+      // 检查选中的任务中是否有失败的任务
+      const selectedTasks = Array.from(this.controller.selectedTasks).map(id => 
+        this.controller.tasks.find(t => t.id === id)
+      ).filter(Boolean);
+      
+      const hasFailedTasks = selectedTasks.some(t => t.status === 'failed');
+      
+      if (hasFailedTasks) {
+        // 显示重试按钮
+        clearBtn.className = 'secondary-btn'; // 保持样式
+        clearBtn.style.color = 'var(--accent-color)';
         clearBtn.innerHTML = `
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6" stroke="currentColor" stroke-width="2"/>
-            <path d="M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="currentColor" stroke-width="2"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 3v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 3l-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <span>清除选中 (${this.controller.selectedTasks.size})</span>
+          <span>重试选中 (${selectedTasks.filter(t => t.status === 'failed').length})</span>
         `;
-      } else {
-        clearBtn.innerHTML = `
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path d="M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6" stroke="currentColor" stroke-width="2"/>
-            <path d="M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="currentColor" stroke-width="2"/>
-          </svg>
-          <span>清除已完成</span>
-        `;
+        
+        clearBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.retrySelected();
+        };
+        return;
       }
+
+      // 恢复为清除选中
+      clearBtn.style.color = '';
+      clearBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.clearSelected();
+      };
+      clearBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6" stroke="currentColor" stroke-width="2"/>
+          <path d="M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span>清除选中 (${this.controller.selectedTasks.size})</span>
+      `;
+    } else {
+      // 恢复为清除已完成
+      clearBtn.style.color = '';
+      clearBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.clearCompleted();
+      };
+      clearBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6" stroke="currentColor" stroke-width="2"/>
+          <path d="M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span>清除已完成</span>
+      `;
     }
   }
   
