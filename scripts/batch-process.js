@@ -37,8 +37,9 @@ dotenvConfig({ path: resolve(__dirname, '../.env') });
 
 // 配置
 const CONFIG = {
-  concurrency: parseInt(process.env.CONCURRENCY || '3'),
-  timeout: parseInt(process.env.TIMEOUT_MS || '60000'),
+  concurrency: parseInt(process.env.CONCURRENCY || '2'),
+  timeout: parseInt(process.env.TIMEOUT_MS || '30000'),
+  requestDelay: parseInt(process.env.REQUEST_DELAY_MS || '500'),
   viewportWidth: parseInt(process.env.VIEWPORT_WIDTH || '1920'),
   viewportHeight: parseInt(process.env.VIEWPORT_HEIGHT || '1080'),
   outputDir: resolve(__dirname, process.env.OUTPUT_DIR || '../template'),
@@ -121,7 +122,8 @@ async function processUrl(browser, url, options = {}) {
   try {
     // 1. 访问页面
     spinner.text = `加载页面: ${url}`;
-    await page.goto(url, { waitUntil: 'networkidle', timeout: CONFIG.timeout });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: CONFIG.timeout });
+    await page.waitForTimeout(1000);
 
     // 2. 提取页面内容
     spinner.text = `提取内容: ${url}`;
@@ -263,7 +265,8 @@ async function batchProcess(baseUrl, options = {}) {
     });
     const page = await context.newPage();
 
-    await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: CONFIG.timeout });
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.timeout });
+    await page.waitForTimeout(1000);
     const { routes, total } = await scanRoutes(page, { limit });
     await context.close();
 
@@ -373,7 +376,9 @@ async function extractOnly(browser, url, screenshotDir = null) {
   const page = await context.newPage();
 
   try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: CONFIG.timeout });
+    // 使用 domcontentloaded 减少等待时间
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: CONFIG.timeout });
+    await page.waitForTimeout(1000); // 等待动态内容
     const snapshot = await extractPage(page);
     
     // 截图（文件名基于路径，更简洁）
@@ -440,6 +445,7 @@ async function batchProcessMultiSites(urls, options = {}) {
   const browser = await chromium.launch({ headless });
   const pLimiter = pLimit(concurrency);
   const startTime = Date.now();
+  const avgTimePerSite = [];  // 用于计算预估时间
 
   // 统计
   let successCount = 0;
@@ -447,31 +453,44 @@ async function batchProcessMultiSites(urls, options = {}) {
   let skipCount = 0;
   const results = [];
 
+  // 进度日志函数
+  const logProgress = (current, total, status, detail = '') => {
+    const percent = ((current / total) * 100).toFixed(1);
+    const bar = '='.repeat(Math.floor(percent / 5)) + '>' + ' '.repeat(20 - Math.floor(percent / 5));
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+    let eta = '--';
+    if (avgTimePerSite.length > 0) {
+      const avgTime = avgTimePerSite.reduce((a, b) => a + b, 0) / avgTimePerSite.length;
+      eta = ((total - current) * avgTime / 1000).toFixed(0);
+    }
+    const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    console.log(`[${timestamp}] [${bar}] ${percent}% (${current}/${total}) | 已用:${elapsed}s 估剩:${eta}s | ${status}${detail ? ' - ' + detail : ''}`);
+  };
+
   try {
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i];
       const progress = `[${i + 1}/${urls.length}]`;
       
+      const siteStartTime = Date.now();
       try {
         const domain = new URL(url).hostname.replace(/\./g, '_');
         const siteDir = join(CONFIG.outputDir, domain);
         const screenshotDir = join(siteDir, 'screenshots');
         const styleguideFile = join(siteDir, 'styleguide.md');
         
-        // 检查是否已处理过（存在 styleguide.md）
+        // 检查是否已处理过
         if (existsSync(styleguideFile)) {
-          console.log(chalk.yellow(`${progress} 跳过（已存在）: ${domain}`));
+          logProgress(i + 1, urls.length, '跳过', domain);
           skipCount++;
           results.push({ url, success: true, domain, skipped: true });
           continue;
         }
         
         await mkdir(screenshotDir, { recursive: true });
+        logProgress(i + 1, urls.length, '扫描路由', domain);
 
-        const spinner = ora(`${progress} 扫描路由: ${url}`).start();
-        const siteStartTime = Date.now();
-
-        // 1. 扫描路由（带超时检查）
+        // 1. 扫描路由
         const checkTimeout = () => {
           if (Date.now() - siteStartTime > siteTimeout) {
             throw new Error(`站点处理超时（>${siteTimeout / 1000}s）`);
@@ -482,49 +501,54 @@ async function batchProcessMultiSites(urls, options = {}) {
           viewport: { width: CONFIG.viewportWidth, height: CONFIG.viewportHeight }
         });
         const scanPage = await scanContext.newPage();
-        await scanPage.goto(url, { waitUntil: 'networkidle', timeout: CONFIG.timeout });
+        await scanPage.goto(url, { waitUntil: 'domcontentloaded', timeout: CONFIG.timeout });
+        await scanPage.waitForTimeout(1000);
         const { routes } = await scanRoutes(scanPage, { limit: pagesPerSite });
         await scanContext.close();
         checkTimeout();
 
         const pageUrls = buildFullUrls(url, routes);
-        spinner.text = `${progress} 提取 ${pageUrls.length} 个页面: ${domain}`;
+        logProgress(i + 1, urls.length, `提取${pageUrls.length}页`, domain);
 
         // 2. 并行提取所有页面
         const snapshots = [];
         for (const pageUrl of pageUrls) {
-          checkTimeout();  // 每处理一个页面前检查超时
+          checkTimeout();
+          let context = null;
           try {
-            const context = await browser.newContext({
+            context = await browser.newContext({
               viewport: { width: CONFIG.viewportWidth, height: CONFIG.viewportHeight },
               userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
             });
             const page = await context.newPage();
-            await page.goto(pageUrl, { waitUntil: 'networkidle', timeout: CONFIG.timeout });
+            await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.timeout });
+            await page.waitForTimeout(800);
             const snapshot = await extractPage(page);
 
-            // 截图
             const urlObj = new URL(pageUrl);
             const pathName = urlObj.pathname === '/' ? 'index' : urlObj.pathname.slice(1).replace(/\//g, '_');
             const screenshotFile = pathName + '.png';
             await page.screenshot({ path: join(screenshotDir, screenshotFile), fullPage: false });
             snapshot.screenshotFile = screenshotFile;
 
-            await context.close();
             snapshots.push(snapshot);
           } catch (e) {
             // 单页失败不影响整体
+          } finally {
+            if (context) await context.close();
           }
+          // 请求间隔，降低系统负载
+          await new Promise(r => setTimeout(r, CONFIG.requestDelay));
         }
 
         if (snapshots.length === 0) {
           throw new Error('没有成功提取的页面');
         }
 
-        // 3. AI 分析（一次性分析所有页面，超 token 自动缩减）
+        // 3. AI 分析
         checkTimeout();
         if (!skipAI) {
-          spinner.text = `${progress} AI 分析 ${snapshots.length} 页: ${domain}`;
+          logProgress(i + 1, urls.length, `AI分析${snapshots.length}页`, domain);
           const analyzer = new AIAnalyzer({ language: CONFIG.language });
           const screenshotRelDir = 'screenshots';
           const batchResult = await analyzer.analyzeBatch(snapshots, { screenshotRelDir });
@@ -533,12 +557,14 @@ async function batchProcessMultiSites(urls, options = {}) {
           await writeFile(outputPath, batchResult.markdown, 'utf-8');
         }
 
-        spinner.succeed(`${progress} 完成: ${domain} (${snapshots.length} 页)`);
+        const siteTime = Date.now() - siteStartTime;
+        avgTimePerSite.push(siteTime);
+        logProgress(i + 1, urls.length, '完成', `${domain} (${snapshots.length}页, ${(siteTime/1000).toFixed(1)}s)`);
         successCount++;
         results.push({ url, success: true, domain, pages: snapshots.length });
 
       } catch (error) {
-        console.log(chalk.red(`${progress} 失败: ${url} - ${error.message}`));
+        logProgress(i + 1, urls.length, '失败', `${url} - ${error.message}`);
         failCount++;
         results.push({ url, success: false, error: error.message });
       }

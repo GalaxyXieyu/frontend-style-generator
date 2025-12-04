@@ -24,3 +24,6 @@ Thumbs.db
 # 日志
 *.log
 npm-debug.log*
+
+# 生成的模板输出
+template/
