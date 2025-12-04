@@ -128,6 +128,10 @@ export class SettingsPanel {
         this._saveAllTemplates(message.templates);
         break;
 
+      case 'testConnection':
+        this._testConnection(message.model);
+        break;
+
       default:
         console.log('Unknown message type:', message.type);
     }
@@ -244,6 +248,60 @@ export class SettingsPanel {
     const config = vscode.workspace.getConfiguration('designLearn');
     await config.update('promptTemplates', templates, vscode.ConfigurationTarget.Global);
     this._loadAndSendData();
+  }
+
+  private async _testConnection(model: any) {
+    try {
+      const baseUrl = model.baseUrl || (model.provider === 'anthropic' 
+        ? 'https://api.anthropic.com/v1' 
+        : 'https://api.openai.com/v1');
+      
+      const url = `${baseUrl}/chat/completions`;
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (model.provider === 'anthropic') {
+        headers['x-api-key'] = model.apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+      } else {
+        headers['Authorization'] = `Bearer ${model.apiKey}`;
+      }
+      
+      const body = JSON.stringify({
+        model: model.modelId,
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 10
+      });
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body
+      });
+      
+      if (response.ok) {
+        this._panel.webview.postMessage({
+          type: 'testResult',
+          success: true,
+          message: `模型 "${model.name}" 连接正常`
+        });
+      } else {
+        const errorData = await response.text();
+        this._panel.webview.postMessage({
+          type: 'testResult',
+          success: false,
+          error: `HTTP ${response.status}: ${errorData.substring(0, 200)}`
+        });
+      }
+    } catch (error: any) {
+      this._panel.webview.postMessage({
+        type: 'testResult',
+        success: false,
+        error: error.message
+      });
+    }
   }
 
   private _getHtmlForWebview(webview: vscode.Webview): string {

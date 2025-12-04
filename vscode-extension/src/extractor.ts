@@ -1,4 +1,6 @@
 import { Snapshot, ImageAsset, FontAsset } from './types';
+import { execSync } from 'child_process';
+import * as fs from 'fs';
 
 export { Snapshot, ImageAsset, FontAsset };
 
@@ -27,9 +29,13 @@ export class PageExtractor {
         const puppeteer = await import('puppeteer');
 
         try {
+            // 查找系统 Chrome 路径
+            const chromePath = this.findChromePath();
+            
             // 启动浏览器
             this.browser = await puppeteer.launch({
                 headless: true,
+                executablePath: chromePath,
                 args: ['--no-sandbox', '--disable-setuid-sandbox']
             });
 
@@ -238,6 +244,55 @@ export class PageExtractor {
                 await this.browser.close();
             }
         }
+    }
+
+    /**
+     * 查找系统 Chrome 浏览器路径
+     */
+    private findChromePath(): string | undefined {
+        const platform = process.platform;
+        
+        if (platform === 'darwin') {
+            // macOS
+            const paths = [
+                '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+                '/Applications/Chromium.app/Contents/MacOS/Chromium',
+                '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+            ];
+            for (const p of paths) {
+                if (fs.existsSync(p)) {
+                    return p;
+                }
+            }
+        } else if (platform === 'win32') {
+            // Windows
+            const paths = [
+                'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe',
+                'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+            ];
+            for (const p of paths) {
+                if (p && fs.existsSync(p)) {
+                    return p;
+                }
+            }
+        } else {
+            // Linux
+            const paths = [
+                '/usr/bin/google-chrome',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/chromium',
+                '/snap/bin/chromium'
+            ];
+            for (const p of paths) {
+                if (fs.existsSync(p)) {
+                    return p;
+                }
+            }
+        }
+        
+        return undefined;
     }
 }
 

@@ -1,0 +1,19 @@
+{
+  "name": "frontend-style-generator-scripts",
+  "version": "1.0.0",
+  "description": "批量处理网页风格提取脚本",
+  "type": "module",
+  "scripts": {
+    "batch": "node batch-process.js",
+    "test:single": "node batch-process.js --test-single",
+    "test:parallel": "node batch-process.js --test-parallel"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "dotenv": "^16.3.1",
+    "ora": "^7.0.1",
+    "p-limit": "^5.0.0",
+    "playwright": "^1.40.0",
+    "xlsx": "^0.18.5"
+  }
+}

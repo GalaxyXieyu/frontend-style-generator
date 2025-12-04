@@ -222,7 +222,23 @@ function setDefaultModel(modelId) {
 }
 
 function testModel(modelId) {
-  alert('测试连接功能即将推出');
+  const model = models.find(m => m.id === modelId);
+  if (!model) {
+    alert('未找到模型');
+    return;
+  }
+  
+  // 显示测试中状态
+  const btn = document.querySelector(`button[onclick="testModel('${modelId}')"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '测试中...';
+  }
+  
+  vscode.postMessage({
+    type: 'testConnection',
+    model: model
+  });
 }
 
 function setActiveTemplate(templateId) {
@@ -361,6 +377,21 @@ function handleExtensionMessage(event) {
 
     case 'showMessage':
       alert(message.text);
+      break;
+
+    case 'testResult':
+      // 恢复按钮状态
+      const testBtns = document.querySelectorAll('.model-card-footer button.primary');
+      testBtns.forEach(btn => {
+        btn.disabled = false;
+        btn.textContent = '测试连接';
+      });
+      
+      if (message.success) {
+        alert('✅ 连接成功！\n\n' + (message.message || 'API 响应正常'));
+      } else {
+        alert('❌ 连接失败\n\n' + (message.error || '未知错误'));
+      }
       break;
 
     case 'error':

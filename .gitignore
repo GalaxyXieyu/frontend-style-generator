@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+
+# 构建产物
+out/
+dist/
+
+# VS Code 插件安装包
+*.vsix
+
+# 环境变量（含敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode-test/
+
+# 日志
+*.log
+npm-debug.log*
